@@ -1,0 +1,141 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>Cascade Object Detection with Deformable Part Models</title>
+
+<link rel="stylesheet" type="text/css" href="style.css" />
+<script src="images/jquery.tools.min.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7953909-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+</head>
+
+<body>
+
+<div id="wrapper">
+<div id="content">
+
+<div id="header">
+<h1>Cascade Object Detection with Deformable Part Models</h1>
+</div><!-- header -->
+
+<div id="container">
+
+<img src="images/cascade.png" style="margin-left:auto; margin-right:auto;display:block;" /><br />
+<div style="font-size: 80%; margin: -1em 1em 2em 1em;">
+Left: A sample cascade detection.  Right (six images): White pixels
+indicate the locations where scores were computed, at the scale of the
+detection (left), for each of the six part filters.  Note how scores are not
+computed at most locations, yielding a fast detection.
+</div>
+
+<h2>Overview</h2>
+
+<p>
+This is an implementation of our star-cascade algorithm for object
+detection with deformable part models.  This algorithm is described in
+[<a href="#ref1">1</a>]. See [<a href="#ref2">2</a>] for more general
+information about our object detection system.
+</p>
+
+<p>
+By building cascade detectors for our deformable part models <em>we obtain an
+average detection time speedup of roughly 14x on the PASCAL 2007 dataset</em>
+with <em>almost no effect on AP scores</em>. By allowing for a reduction in recall
+(i.e., increasing the global detection threshold), we can obtain speedup
+factors as high as 40x for some classes with almost no loss in precision.
+(All timing comparisons are between single-threaded implementations of
+both algorithms.)
+</p>
+
+<p>
+This package contains object detection and cascade threshold learning
+code. It also contains pre-computed statistics needed to select
+thresholds for the models included in the release of our object detection
+system. These statistics were computed on the PASCAL 2006, 2007, 2009,
+and INRIA Person datasets. In each case, the statistics were computed on
+the same data that the detectors were trained on. In principle, thresholds
+selected from this data could be too aggressive due to over-fitting,
+however we have not observed this problem in practice.
+</p>
+
+<p>
+The system is implemented in MATLAB, with the core algorithm written
+in C++ for efficiency reasons. The software was tested on several versions
+of Linux and Mac OS X using MATLAB versions R2009b and R2010a. There
+may be compatibility issues with other versions of MATLAB and with
+other platforms.
+</p>
+
+<p>
+For questions regarding the source code please contact Ross Girshick at
+r<a href="http://mailhide.recaptcha.net/d?k=01zrnVwrbcqc8Xo2gqt7Om4A==&amp;c=usMkxVQdndhvfc6U4RkO7l2iHi9_4svOcuN3WGFGcnw=" onclick="window.open('http://mailhide.recaptcha.net/d?k=01zrnVwrbcqc8Xo2gqt7Om4A==&amp;c=usMkxVQdndhvfc6U4RkO7l2iHi9_4svOcuN3WGFGcnw=', '', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=0,width=500,height=300'); return false;" title="Reveal this e-mail address">...</a>@cs.uchicago.edu
+(click the "..." to reveal the email address).</p>
+
+<h2>Download</h2>
+
+<p>
+<em>This package is an <b>add-on</b> for our <a href="http://people.cs.uchicago.edu/~pff/latent">object detection system.</a>
+You must install that system first in order to use the cascade code.</em>
+</p>
+<p>
+Get the <a href="https://dl.dropboxusercontent.com/s/45y6nxvaz6gsfp4/voc-release4.01-star-cascade.tgz?dl=0" onclick="_gaq.push(['_trackEvent', 'Code', 'Download', 'voc-release4.01-star-cascade.tgz']);">star-cascade source code</a>. <em>Updated: Feb 28, 2012 (voc-release4.01 compatibility fix)</em>
+</p>
+<p>
+This project is now hosted on <a href="https://github.com/rbgirshick/star-cascade">github</a>.
+</p>
+
+<h2>Installation</h2>
+
+<ol>
+<li>Download the package and extract it in your <em>voc-release4</em> directory.<br />
+<div style="margin-top: 0.3em;">
+  <tt>$ cd /path/to/voc-release4</tt> <br />
+  <tt>$ tar zxvf voc-release4-star-cascade.tgz</tt>
+</div>
+</li>
+<li>Open the README file and follow the detailed installation instructions within.</li>
+</ol>
+<br />
+
+
+<h2>References</h2>
+
+<p id="ref1">
+[1] P. Felzenszwalb, R. Girshick, D. McAllester.<br />
+Cascade Object Detection with Deformable Part Models.<br />
+To appear in the Proceedings of the IEEE CVPR 2010.<br />
+<a href="../papers/Cascade-Object-Detection-with-Deformable-Part-Models--Felzenszwalb-Girshick-McAllester.pdf">pdf</a>
+</p>
+
+<p id="ref2">
+[2] P. Felzenszwalb, R. Girshick, D. McAllester, D. Ramanan.<br />
+Object Detection with Discriminatively Trained Part Based Models.<br />
+To appear in the IEEE Transactions on Pattern Analysis and Machine
+Intelligence.<br />
+<a href="../papers/Object-Detection-with-Discriminatively-Trained-Part-Based-Models--Felzenszwalb-Girshick-McAllester-Ramanan.pdf">pdf</a>
+</p>
+
+<!-- <h2>How to Cite</h2> -->
+
+</div><!--container-->
+
+</div><!-- content -->
+
+</div><!-- wrapper -->
+
+</body>
+</html>

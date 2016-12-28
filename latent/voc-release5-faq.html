@@ -1,0 +1,112 @@
+<html>
+<head>
+<link rel="stylesheet" type="text/css" href="style.css" />
+
+<title>FAQ: Discriminatively Trained Deformable Part Models (Release 5)</title>
+
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7953909-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+</head>
+
+<body>
+<h2>voc-release5 FAQ</h2>
+
+<ol id="faq">
+  <li><p>
+  Q: When I compile voc-release5 on OS X 10.8 with XCode 4.5 
+  I get a bunch of nasty C++ error messages ending with
+  <pre>
+  ...
+  std::basic_string<_CharT, _Traits, _Alloc>&) [with _CharT = char, _Traits = std::char_traits<char>, _Alloc = std::allocator<char>]' but no definition available
+  </pre>
+  How do I fix this?
+  </p>
+  <p>
+  A: Edit your mexopts.sh file and set
+  <pre>
+  MACOSX_DEPLOYMENT_TARGET='10.7'
+  </pre>
+  Also, make sure to change your SDKROOT if needed 
+  (see: <a href="http://www.mathworks.com/support/solutions/en/data/1-FR6LXJ/">http://www.mathworks.com/support/solutions/en/data/1-FR6LXJ/</a>).
+  </p>
+  </li>
+
+  <li><p>
+  Q: Can I train models with my own dataset?
+  </p>
+
+  <p>
+  A: It is possible to train models using your own dataset.  I recommend
+  taking a look at pascal_data.m, which defines the function that we use
+  for loading the PASCAL data into the internal data structures used by
+  our code.  To support your own data, you will need to define your own
+  function that reads in your positive and negative examples and returns
+  the same data structures as the function pascal_data().
+  </p>
+  </li>
+
+  <li>
+  <p>
+  Q: When I compile voc-release5 on a 32-bit machine I get a bunch of errors. What's up with that? <br/>
+  <br/>
+  Example error message:
+  <pre>
+  /usr/include/c++/4.2/bits/stl_deque.h: In member function 'void std::deque<_Tp, _Alloc>::_M_initialize_dispatch(_Integer, _Integer, std::__true_type) [with _Integer = int, _Tp = double*, _Alloc = std::allocator<double*>]':
+  /usr/include/c++/4.2/bits/stl_deque.h:733:   instantiated from 'std::deque<_Tp, _Alloc>::deque(_InputIterator, _InputIterator, const _Alloc&) [with _InputIterator = int, _Tp = double*, _Alloc = std::allocator<double*>]'
+  model.h:94:   instantiated from here
+  /usr/include/c++/4.2/bits/stl_deque.h:1229: error: invalid conversion from 'int' to 'double*'
+  /usr/include/c++/4.2/bits/stl_deque.h:1229: error:   initializing argument 1 of 'void std::deque<_Tp, _Alloc>::_M_fill_initialize(const _Tp&) [with _Tp = double*, _Alloc = std::allocator<double*>]'
+
+  mex: compile of ' "fv_cache.cc"' failed.
+  </pre>
+  </p>
+  <p>
+  A: At the moment the code does not support 32-bit platforms. (I do not presently have access
+  to a 32-bit environment for debugging and testing.)
+  </p>
+
+  </li>
+
+  <li>
+  <p>
+  Q: When I compile voc-release5 on OS X with MATLAB &gt;= 2013a I get an error regarding OpenMP. What's up with that? <br/>
+  <br />
+  Example error message:
+  <pre>
+    clang: warning: argument unused during compilation: '-fopenmp'
+    fv_cache/fv_cache.cc:5:10: fatal error: 'omp.h' file not found
+    #include <omp.h>
+  </pre>
+  </p>
+  <p>
+  A: Starting with MATLAB 2013a on OS X compiler support was shifted from XCode with GCC to XCode with 
+  Clang. Clang does not yet support OpenMP, hence the error message above. It appears that you can simply
+  edit your mexopts.sh and force mex to use GCC instead of Clang. I don't have 2013a yet and haven't
+  tested this extensively, YMMV.<br />
+  <br />
+  <pre>
+  change: CC='xcrun -sdk macosx10.7 clang'
+  to:     CC='llvm-gcc'
+
+  change: CXX='xcrun -sdk macosx10.7 clang++'
+  to:     CXX='llvm-g++'
+  </pre>
+  </p>
+  </li>
+</ol>
+
+</body>
+
+</html>

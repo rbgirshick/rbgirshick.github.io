@@ -1,0 +1,85 @@
+html, body, div, span, applet, object, iframe, h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code, del, dfn, em, font, img, ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var, dl, dt, dd, ol, ul, li, fieldset, form, label, legend, table, caption, tbody, tfoot, thead, tr, th, td {
+  border:0pt none;
+  font-family:inherit;
+  font-size:100%;
+  font-style:inherit;
+  font-weight:inherit;
+  margin:0pt;
+  outline-color:invert;
+  outline-style:none;
+  outline-width:0pt;
+  padding:0pt;
+  vertical-align:baseline;
+}
+strong, b {
+	font-weight:bold;
+}
+em, i {
+	font-style:italic;
+}
+tt {
+  font-family: monospace;
+}
+* {
+	margin:0pt;
+	padding:0pt;
+}
+
+body {
+  position: relative;
+  margin: 10px auto 0px auto;
+  width: 850px;
+  font-family: georgia, sans-serif;
+  line-height: 120%;
+  font-size: 13pt;
+}
+
+#content {
+	background:#fff;
+	padding:13px 13px 7px 13px;
+}
+
+#header {
+  color: #333;
+  margin: 3em 0 1em 0;		
+  border-bottom: 1px solid #ccc;
+}
+
+h1 {
+  font-size:22pt;
+  text-align:center;
+  font-variant: small-caps; 
+}
+
+h2 {
+  color: #666;
+  margin: 10px 0px 5px 0px;
+  font-size: 1.2em;
+  border-bottom: 1px solid #ccc;
+  font-variant: small-caps; 
+}
+
+p {
+  padding: 0.1em 0 1em 1em;
+  width: 90%;
+}
+
+ol {
+  margin: 0 0 0 0;
+}
+li {
+  background: #ffffff;
+  margin-left: 2.5em;
+  padding-bottom: 0.4em;
+}
+blockquote {
+  width: 75%;
+  background: #DDD;
+  margin: 1em 2em;
+  border-left: 1px dashed #999;
+  padding-left: 1em; 
+  padding-right: 1em;
+  padding-top: 0.2em;
+  padding-bottom: 0.2em;
+  font-variant: small-caps; 
+}

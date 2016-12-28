@@ -1,0 +1,469 @@
+<html>
+<head>
+<link rel="stylesheet" type="text/css" href="style.css" />
+
+<title>Discriminatively Trained Deformable Part Models (Release 5)</title>
+
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7953909-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+</head>
+
+<body>
+<h2>Discriminatively trained deformable part models</h2>
+<h4>Version 5 (Sept. 5, 2012)</h4>
+
+<p style="text-align: center;">
+<img height=266 src="2007_008221.jpg" />
+<br />
+<br />
+<img style="vertical-align: top;" width="600" src="bicycle_model.jpg" />
+</p>
+
+<h4>Introduction</h4>
+<p>
+Over the past few years we have developed a complete learning-based
+system for detecting and localizing objects in images.  Our system
+represents objects using mixtures of deformable part models.  These
+models are trained using a discriminative method that only requires
+bounding boxes for the objects in an image.  The approach leads to
+efficient object detectors that achieve state of the art results
+on the PASCAL and INRIA person datasets.
+<br /><br />
+At a high level our system can be characterized by the combination of
+<ol>
+  <li>Strong low-level features based on histograms of oriented gradients (HOG)</li>
+  <li>Efficient matching algorithms for deformable part-based models (pictorial structures)</li>
+  <li>Discriminative learning with latent variables (latent SVM)</li>
+</ol>
+</p>
+
+<p>
+This work was awarded the PASCAL VOC
+<a href="http://pascallin.ecs.soton.ac.uk/challenges/VOC/voc2010/workshop/">"Lifetime Achievement" Prize</a>
+in 2010.
+</p>
+
+<hr />
+
+<h4>Code</h4>
+<p>
+Here you can download a complete implementation of our system.  The
+current implementation extends the system in [2] as described in [6].
+The models in this implementation are structured using the grammar
+formalism presented in [4].  Previous releases are available
+below.
+</p>
+
+<p>
+The distribution contains object detection and model learning code,
+as well as models trained on the PASCAL and INRIA Person datasets.
+</p>
+
+<p>
+This release also includes code for
+<ol>
+  <li>Rescoring detections based on contextual information</li>
+  <li>The fast cascade detection algorithm described in [3]</li>
+  <li>Training the person detection grammar described in [5]</li>
+</ol>
+</p>
+
+<p>
+The system is implemented in MATLAB, with helper functions
+written in C/C++ for efficiency reasons.  The software was tested
+on several versions of Linux and Mac OS X using MATLAB version
+R2011a.  Earlier versions of MATLAB should also work, though there
+may be compatibility issues with releases prior to 2009.
+</p>
+
+<p>
+For questions regarding the source code please
+read the <a href="voc-release5-faq.html">FAQ</a> first. Contact Ross Girshick at
+ross<a href="http://www.google.com/recaptcha/mailhide/d?k=01lf74dL0BSWk4f3FfhmSL9w==&amp;c=SSdhiHUPkNsVbMo0sw9IKfDbTS6udSEaAXjsuY_F7xg=" onclick="window.open('http://www.google.com/recaptcha/mailhide/d?k\07501lf74dL0BSWk4f3FfhmSL9w\75\75\46c\75SSdhiHUPkNsVbMo0sw9IKfDbTS6udSEaAXjsuY_F7xg\075', '', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=0,width=500,height=300'); return false;" title="Reveal this e-mail address">...</a>@gmail.com
+(click the "..." to reveal the email address) if you're still stuck.
+</p>
+
+<p>
+Source code and model download:
+<a href="https://dl.dropboxusercontent.com/s/gh7reh931y1wqmf/voc-release5.tgz?dl=0" onclick="_gaq.push(['_trackEvent', 'Code', 'Download', 'voc-release5.tgz']);">voc-release5.tgz</a> (updated Sept. 5, 2012).<br>
+</p>
+
+<p>
+<b>New</b>: I also maintain a <a href="https://github.com/rbgirshick/voc-dpm" onclick="_gaq.push(['_trackEvent', 'Code', 'Download', 'github-voc-dpm']);">repository</a>
+on github that includes bug fixes, speed improvements, and other updates. In general that code will produce different (though similar) results to the
+tables listed below.<br />
+</p>
+
+<p>
+What's changed since voc-release4? <a href="changelog.txt">changelog</a>
+</p>
+
+<p>
+This project has been supported by the National Science Foundation
+under Grant No. 0534820, 0746569 and 0811340.
+</p>
+
+<h4>How to cite</h4>
+
+<p>
+When citing our system, please cite reference [2] and the website
+for <b>this specific release</b>. Bibtex entries are provided below
+for your convenience.
+</p>
+
+<p>
+<tt>
+@misc{voc-release5,<br />
+&nbsp;author = "Girshick, R. B. and Felzenszwalb, P. F. and McAllester, D.",<br />
+&nbsp;title = "Discriminatively Trained Deformable Part Models, Release 5",<br />
+&nbsp;howpublished = "http://people.cs.uchicago.edu/~rbg/latent-release5/"}
+</tt>
+</p>
+
+<p>
+<tt>
+@article{lsvm-pami,<br />
+&nbsp; title   = "Object Detection with Discriminatively Trained Part Based Models",<br />
+&nbsp; author  = "Felzenszwalb, P. F. and Girshick, R. B. and McAllester, D. and Ramanan, D.",<br />
+&nbsp; journal = "IEEE Transactions on Pattern Analysis and Machine Intelligence",<br />
+&nbsp; year    = "2010", volume  = "32", number  = "9", pages   = "1627--1645"}<br />
+</tt>
+</p>
+
+<hr />
+<h4>References</h4>
+
+<ol class="papers">
+  <li>
+  P. Felzenszwalb, D. McAllester, D. Ramanan<br />
+  <b>A Discriminatively Trained, Multiscale, Deformable Part Model</b><br />
+  IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2008<br />
+  </li>
+
+  <li>
+  P. Felzenszwalb, R. Girshick, D. McAllester, D. Ramanan<br />
+  <b>Object Detection with Discriminatively Trained Part Based Models</b><br />
+  IEEE Transactions on Pattern Analysis and Machine Intelligence, Vol. 32, No. 9, Sep. 2010 <br />
+  <a href="../papers/Object-Detection-with-Discriminatively-Trained-Part-Based-Models--Felzenszwalb-Girshick-McAllester-Ramanan.pdf">pdf</a>
+  </li>
+
+  <li>
+  P. Felzenszwalb, R. Girshick, D. McAllester<br />
+  <b>Cascade Object Detection with Deformable Part Models</b><br />
+  IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2010<br />
+  <a href="../papers/Cascade-Object-Detection-with-Deformable-Part-Models--Felzenszwalb-Girshick-McAllester.pdf">pdf</a>
+  </li>
+
+  <li>
+  P. Felzenszwalb, D. McAllester<br />
+  <b>Object Detection Grammars</b><br />
+  University of Chicago, Computer Science TR-2010-02, February 2010<br />
+  <A HREF="http://www.cs.brown.edu/~pff/papers/TR-2010-02.pdf">pdf</A><br />
+  </li>
+
+  <li>
+  R. Girshick, P. Felzenszwalb, D. McAllester<br />
+  <b>Object Detection with Grammar Models</b><br />
+  Neural Information Processing Systems (NIPS), 2011<br />
+  <a href="../papers/grammar-nips11.pdf">pdf</a><br />
+  </li>
+
+  <li>
+  R. Girshick<br />
+  <b>From Rigid Templates to Grammars: Object Detection with Structured Models</b><br />
+  Ph.D. dissertation, The University of Chicago, Apr. 2012<br />
+  <a href="../papers/rbg-phd-dissertation.pdf">pdf</a> <a href="../slides/rbg-defense-slides.pdf">slides</a>
+  </li>
+</ol>
+
+<hr />
+
+<h4>Example detections</h4>
+
+<p>
+<A HREF="car.jpg"><IMG WIDTH=250 SRC="car.jpg"></A>
+<A HREF="inriaperson.jpg"><IMG WIDTH=250 SRC="inriaperson.jpg"></A>
+<A HREF="bicycle.jpg"><IMG WIDTH=250 SRC="bicycle.jpg"></A>
+</p>
+
+<hr />
+
+<h4>Detection results &mdash; PASCAL datasets</h4>
+
+<p>
+The models included with the source code were trained on the train+val
+dataset from each year and evaluated on the corresponding test
+dataset.
+<br />
+This is exactly the protocol of the "comp3" competition.
+Below are the average precision scores we obtain in each category.
+</p>
+
+<table class="results-table">
+<caption>Table 1. PASCAL VOC 2010 comp3</caption>
+<tr>
+<th scope="col"></th>
+<th scope="col"><b>aero</b></th>
+<th scope="col"><b>bicycle</b></th>
+<th scope="col"><b>bird</b></th>
+<th scope="col"><b>boat</b></th>
+<th scope="col"><b>bottle</b></th>
+<th scope="col"><b>bus</b></th>
+<th scope="col"><b>car</b></th>
+<th scope="col"><b>cat</b></th>
+<th scope="col"><b>chair</b></th>
+<th scope="col"><b>cow</b></th>
+<th scope="col"><b>table</b></th>
+<th scope="col"><b>dog</b></th>
+<th scope="col"><b>horse</b></th>
+<th scope="col"><b>mbike</b></th>
+<th scope="col"><b>person</b></th>
+<th scope="col"><b>plant</b></th>
+<th scope="col"><b>sheep</b></th>
+<th scope="col"><b>sofa</b></th>
+<th scope="col"><b>train</b></th>
+<th scope="col"><b>tv</b></th>
+<th scope="col"><b><i>mean</i></b></th>
+</tr><tr><th class="row"><b>without context</b></th>
+<td>45.6</td>
+<td>49.0</td>
+<td>11.0</td>
+<td>11.6</td>
+<td>27.2</td>
+<td>50.5</td>
+<td>43.1</td>
+<td>23.6</td>
+<td>17.2</td>
+<td>23.2</td>
+<td>10.7</td>
+<td>20.5</td>
+<td>42.5</td>
+<td>44.5</td>
+<td>41.3</td>
+<td>8.7</td>
+<td>29.0</td>
+<td>18.7</td>
+<td>40.0</td>
+<td>34.5</td>
+<td><i>29.6</i></td>
+</tr>
+<tr><th class="row"><b>with context</b></th>
+<td>48.2</td>
+<td>52.2</td>
+<td>14.8</td>
+<td>13.8</td>
+<td>28.7</td>
+<td>53.2</td>
+<td>44.9</td>
+<td>26.0</td>
+<td>18.4</td>
+<td>24.4</td>
+<td>13.7</td>
+<td>23.1</td>
+<td>45.8</td>
+<td>50.5</td>
+<td>43.7</td>
+<td>9.8</td>
+<td>31.1</td>
+<td>21.5</td>
+<td>44.4</td>
+<td>35.7</td>
+<td><i>32.2</i></td>
+</tr>
+<tr><th class="row"><b>with context &<br />extra octave</b></th>
+<td valign="top">49.2</td>
+<td valign="top">53.8</td>
+<td valign="top">13.1</td>
+<td valign="top">15.3</td>
+<td valign="top">35.5</td>
+<td valign="top">53.4</td>
+<td valign="top">49.7</td>
+<td valign="top">27.0</td>
+<td valign="top">17.2</td>
+<td valign="top">28.8</td>
+<td valign="top">14.7</td>
+<td valign="top">17.8</td>
+<td valign="top">46.4</td>
+<td valign="top">51.2</td>
+<td valign="top">47.7</td>
+<td valign="top">10.8</td>
+<td valign="top">34.2</td>
+<td valign="top">20.7</td>
+<td valign="top">43.8</td>
+<td valign="top">38.3</td>
+<td valign="top"><i>33.4</i></td>
+</tr>
+<tr><th class="row"><b>person detection<br />grammar</b></th>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top">49.9</td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"><i></i></td>
+</tr>
+</table>
+
+<table class="results-table">
+<caption>Table 2. PASCAL VOC 2007 comp3</caption>
+<tr>
+<th scope="col"></th>
+<th scope="col"><b>aero</b></th>
+<th scope="col"><b>bicycle</b></th>
+<th scope="col"><b>bird</b></th>
+<th scope="col"><b>boat</b></th>
+<th scope="col"><b>bottle</b></th>
+<th scope="col"><b>bus</b></th>
+<th scope="col"><b>car</b></th>
+<th scope="col"><b>cat</b></th>
+<th scope="col"><b>chair</b></th>
+<th scope="col"><b>cow</b></th>
+<th scope="col"><b>table</b></th>
+<th scope="col"><b>dog</b></th>
+<th scope="col"><b>horse</b></th>
+<th scope="col"><b>mbike</b></th>
+<th scope="col"><b>person</b></th>
+<th scope="col"><b>plant</b></th>
+<th scope="col"><b>sheep</b></th>
+<th scope="col"><b>sofa</b></th>
+<th scope="col"><b>train</b></th>
+<th scope="col"><b>tv</b></th>
+<th scope="col"><b><i>mean</i></b></th>
+</tr><tr><th class="row"><b>without context</b></th>
+<td>33.2</td>
+<td>60.3</td>
+<td>10.2</td>
+<td>16.1</td>
+<td>27.3</td>
+<td>54.3</td>
+<td>58.2</td>
+<td>23.0</td>
+<td>20.0</td>
+<td>24.1</td>
+<td>26.7</td>
+<td>12.7</td>
+<td>58.1</td>
+<td>48.2</td>
+<td>43.2</td>
+<td>12.0</td>
+<td>21.1</td>
+<td>36.1</td>
+<td>46.0</td>
+<td>43.5</td>
+<td><i>33.7</i></td>
+</tr>
+<tr><th class="row"><b>with context</b></th>
+<td>36.6</td>
+<td>62.2</td>
+<td>12.1</td>
+<td>17.6</td>
+<td>28.7</td>
+<td>54.6</td>
+<td>60.4</td>
+<td>25.5</td>
+<td>21.1</td>
+<td>25.6</td>
+<td>26.6</td>
+<td>14.6</td>
+<td>60.9</td>
+<td>50.7</td>
+<td>44.7</td>
+<td>14.3</td>
+<td>21.5</td>
+<td>38.2</td>
+<td>49.3</td>
+<td>43.6</td>
+<td><i>35.4</i></td>
+</tr>
+<tr><th class="row"><b>person detection<br />grammar</b></th>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top">48.7</td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"></td>
+<td valign="top"><i></i></td>
+</tr>
+</table>
+
+<hr />
+
+<h4>Detection Results &mdash; INRIA Person</h4>
+
+<p>
+We also trained and tested a model on the INRIA Person dataset.<br />
+We scored the model using the PASCAL evaluation methodology in the
+complete test dataset, including images without people.
+</p>
+
+<p>
+Annotations for the INRIA dataset in the PASCAL VOC format are
+available: <br />
+&nbsp;&nbsp; <a href="INRIA_PASCAL.txt">INRIA person training README</a>
+&nbsp;&nbsp; <a href="https://dl.dropboxusercontent.com/s/4j4ywd1e9onqwkw/INRIA_PASCAL.tgz?dl=0">INRIA person annotations</a> <br />
+</p>
+
+<p>
+INRIA Person average precision: 88.0
+</p>
+
+<p>
+Plot of Recall / False positives per image (FPPI) <br />
+<img height=300 src="inriaperson_fppi_release5.jpg">
+</p>
+
+<hr />
+
+<h4>Previous Releases</h4>
+<p>
+<a href="http://www.cs.brown.edu/~pff/latent-release4/">voc-release4</a><br />
+<a href="http://www.cs.brown.edu/~pff/latent-release3/">voc-release3</a><br />
+<a href="http://www.cs.brown.edu/~pff/latent-release2/">voc-release2</a><br />
+<a href="http://www.cs.brown.edu/~pff/latent-release1/">voc-release1</a><br />
+</p>
+
+Back to <a href="..">rbg's homepage</a>
+
+</body>
+
+</html>

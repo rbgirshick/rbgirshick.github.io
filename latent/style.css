@@ -1,0 +1,115 @@
+body {
+  font-family: times;
+}
+
+img {
+  border: none;
+}
+
+.results-table { 
+  border-collapse: collapse; 
+  border: none; 
+}
+
+.results-table th { 
+  border-top: 1px solid #666; 
+  border-bottom: 1px solid #666; 
+  padding-left: 0.4em; 
+  padding-right: 0.4em; 
+  font-size: 1em;
+  font-family: times;
+}
+
+.results-table th.row { 
+  padding-right: 0.8em;
+  border: none;
+  text-align: right;
+}
+
+.results-table td { 
+  padding-top: 0.25em; 
+  padding-left: 0.4em; 
+  padding-right: 0.4em; 
+  font-size: 1em;
+  font-family: times;
+  text-align: center;
+}
+
+.results-table caption {
+  border-top: 1px solid #666;
+  caption-side: bottom;
+  font-size: 1em;
+  font-family: times;
+  /*font-style: italic;*/
+  text-align: left;
+  padding: 0.3em 0;
+  padding-bottom: 2em;
+}
+
+li {
+  padding-bottom: 0.5em;
+  margin-left: 1.4em;
+  width: 90%;
+}
+ol#papers li {
+  padding-bottom: 1em;
+}
+
+body {
+  position: relative;
+  margin: 3em;
+  line-height: 120%;
+}
+
+p {
+  padding: 0 0 0 1em;
+  width: 900px;
+}
+
+ol#faq li p {
+  padding: 0 0 0 0em;
+  width: 900px;
+}
+
+
+/*
+html, body, div, span, applet, object, iframe, h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code, del, dfn, em, font, img, ins, kbd, q, s, samp, small, strike, strong, sub, tt, var, dl, dt, dd, ol, ul, li, fieldset, form, label, legend, table, caption, tbody, tfoot, thead, tr, th, td {
+  border:0pt none;
+  font-family:inherit;
+  font-size:100%;
+  font-style:inherit;
+  font-weight:inherit;
+  margin:0pt;
+  outline-color:invert;
+  outline-style:none;
+  outline-width:0pt;
+  padding:0pt;
+  vertical-align:baseline;
+}
+
+* {
+  margin:0pt;
+  padding:0pt;
+}
+
+
+h2 {
+  color: #333;
+  margin: 10px 0px 5px 0px;
+  font-size: 1.1em;
+  border-bottom: 1px solid #ccc;
+  font-variant: small-caps; 
+}
+ul { 
+  list-style:circle;
+}
+img {
+  border: none;
+}
+strong, b {
+	font-weight:bold;
+}
+em, i {
+	font-style:italic;
+}
+*/

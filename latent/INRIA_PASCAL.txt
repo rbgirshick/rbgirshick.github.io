@@ -1,0 +1,26 @@
+Using the INRIA pedestrian dataset with voc-release5
+----------------------------------------------------
+
+I've made our PASCAL-compatible annotations for the INRIA
+pedestrian dataset available. You can download them from
+http://people.cs.uchicago.edu/~rbg/latent/INRIA_PASCAL.tgz.
+
+This archive does not include the images -- it's just the
+annotations and a PASCAL-compatible directory structure for holding
+the VOCdevkit, images, and annotations. After extracting the
+achive, you need to copy the images into the directory structure.
+To get the images, download
+http://pascal.inrialpes.fr/data/human/INRIAPerson.tar and then copy the
+following files:
+
+  $ cp INRIAPerson/Test/neg/* INRIA_PASCAL/VOCdevkit/VOC2007/Images/
+  $ cp INRIAPerson/Test/pos/* INRIA_PASCAL/VOCdevkit/VOC2007/Images/
+  $ cp INRIAPerson/Train/neg/* INRIA_PASCAL/VOCdevkit/VOC2007/Images/
+  $ cp INRIAPerson/Train/pos/* INRIA_PASCAL/VOCdevkit/VOC2007/Images/
+
+To train an INRIA pedestrian model, search for "INRIA" in voc_config.m,
+comment out the pascal.dev_kit setting for PASCAL VOC and uncomment the
+setting for INRIA.
+
+The model class name is 'inriaperson'. You would train a model by running:
+>> pascal('inriaperson', 1);
