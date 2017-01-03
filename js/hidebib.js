@@ -32,7 +32,7 @@ function hideallabs()
         if (el[i].className == "paper") {
             var spans = el[i].getElementsByTagName("span") ;
             for (var j = 0; j < spans.length; ++j) {
-                if (spans[j].className = "blurb") {
+                if (spans[j].className == "blurb") {
                   spans [j] .style.display = 'none' ;
                 }
             }
