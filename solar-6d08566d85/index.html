@@ -240,8 +240,14 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
 }
 .tile .value .unit { font-size: 15px; font-weight: 400; color: var(--text-secondary); letter-spacing: 0; }
 .tile { display: flex; flex-direction: column; }
-.tile .meter { height: 4px; border-radius: 2px; margin-top: 9px; overflow: hidden; align-self: stretch; }
-.tile .meter i { display: block; height: 100%; border-radius: 2px; }
+.tile .meter { position: relative; height: 4px; border-radius: 2px; margin-top: 9px; align-self: stretch; }
+.tile .meter i { display: block; height: 100%; border-radius: 2px; max-width: 100%; }
+.tile .meter.diverge { background: var(--grid); }
+.tile .meter.diverge i { position: absolute; top: 0; bottom: 0; }
+.tile .meter .zero {
+  position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px;
+  background: var(--axis); transform: translateX(-0.5px);
+}
 /* margin-top:auto pins every tile's foot to the same baseline, with or
    without a meter bar above it */
 .tile .foot { font-size: 12px; color: var(--text-muted); margin-top: auto; padding-top: 7px; }
@@ -650,7 +656,7 @@ function renderHero(intraday, live) {
   const svg = $('hero-chart');
   clear(svg);
   const all = intraday.rows || [];
-  if (!all.length) { $('hero-date').textContent = 'no samples yet'; renderReadouts(live, 1, 1); return; }
+  if (!all.length) { $('hero-date').textContent = 'no samples yet'; renderReadouts(live, 1, 1, 1); return; }
 
   const todayStr = dayKey(all[all.length - 1][0]);
   const rows = all.filter(r => dayKey(r[0]) === todayStr);
@@ -761,16 +767,33 @@ function renderHero(intraday, live) {
   // scale ceilings for the readout meters
   const peak = Math.max(1, ...all.map(r => r[1]));
   const loadPeak = Math.max(1, ...all.map(r => r[2]));
-  renderReadouts(live, peak, loadPeak);
+  const netPeak = Math.max(0.5, ...all.map(r => Math.abs(r[3])));
+  renderReadouts(live, peak, loadPeak, netPeak);
 }
 
-/* ---------- readouts ---------------------------------------------------- */
-function renderReadouts(live, peak, loadPeak) {
+/* ---------- readouts ----------------------------------------------------
+   Each meter shows the current rate against the biggest rate observed in
+   the intraday window, so "is this a lot for my system?" reads at a
+   glance. The grid meter diverges from a center zero: right of center is
+   importing, left is exporting.                                          */
+function renderReadouts(live, peak, loadPeak, netPeak) {
   const box = $('readouts');
   clear(box);
   const c = live.current || {};
   const t = live.today || {};
   const PROD = css('--prod'), CONS = css('--cons');
+
+  const meterHtml = m => {
+    if (!m) return '';
+    if (m.diverge) {
+      const pct = Math.min(50, m.frac * 50).toFixed(1);
+      const side = m.dir < 0 ? 'right:50%' : 'left:50%';
+      return `<div class="meter diverge" title="${m.title}">` +
+        `<i style="${side};width:${pct}%;background:${m.color}"></i><span class="zero"></span></div>`;
+    }
+    return `<div class="meter" title="${m.title}" style="background:color-mix(in srgb, ${m.color} 18%, var(--surface-1))">` +
+      `<i style="width:${Math.min(100, m.frac * 100).toFixed(1)}%;background:${m.color}"></i></div>`;
+  };
 
   const tile = (label, key, kw, foot, meter) => {
     const d = document.createElement('div');
@@ -778,18 +801,20 @@ function renderReadouts(live, peak, loadPeak) {
     d.innerHTML =
       `<div class="label"><span class="key" style="background:${key}"></span>${label}</div>` +
       `<div class="value">${fmt(kw, 2)}<span class="unit"> kW</span></div>` +
-      (meter ? `<div class="meter" style="background:color-mix(in srgb, ${meter.color} 18%, var(--surface-1))">` +
-        `<i style="width:${Math.min(100, meter.frac * 100).toFixed(1)}%;background:${meter.color}"></i></div>` : '') +
+      meterHtml(meter) +
       `<div class="foot">${foot}</div>`;
     return d;
   };
 
+  const days = (DATA.intraday && DATA.intraday.days) || 14;
   box.appendChild(tile('Producing', PROD, c.pv_kw ?? 0,
     t.pv_kwh !== undefined ? `<b>${fmt(t.pv_kwh)} kWh</b> so far today` : '',
-    { color: PROD, frac: (c.pv_kw ?? 0) / peak }));
+    { color: PROD, frac: (c.pv_kw ?? 0) / peak,
+      title: `Now vs the fastest production of the last ${days} days (${fmt(peak, 1)} kW)` }));
   box.appendChild(tile('Using', CONS, c.consumption_kw ?? 0,
     t.consumption_kwh !== undefined ? `<b>${fmt(t.consumption_kwh)} kWh</b> so far today` : '',
-    { color: CONS, frac: (c.consumption_kw ?? 0) / loadPeak }));
+    { color: CONS, frac: (c.consumption_kw ?? 0) / loadPeak,
+      title: `Now vs the biggest household draw of the last ${days} days (${fmt(loadPeak, 1)} kW)` }));
 
   const net = c.net_kw ?? 0;
   const exporting = net < 0;
@@ -798,7 +823,8 @@ function renderReadouts(live, peak, loadPeak) {
     t.net_kwh !== undefined
       ? `<b>${fmt(Math.abs(t.net_kwh))} kWh</b> ${t.net_kwh < 0 ? 'exported' : 'imported'} today`
       : '',
-    null));
+    { diverge: true, dir: exporting ? -1 : 1, color: dirColor, frac: Math.abs(net) / netPeak,
+      title: `Grid flow now vs the biggest of the last ${days} days (${fmt(netPeak, 1)} kW) — right of center imports, left exports` }));
 }
 
 /* ---------- filmstrip: last 14 days ------------------------------------- */
