@@ -301,16 +301,29 @@ svg.chart text { font-variant-numeric: tabular-nums; }
 }
 
 /* --- array ------------------------------------------------------------- */
-.array {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px;
+.roof-scroll { overflow-x: auto; }
+.roof { min-width: 720px; }
+.string-label {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-muted); margin: 0 0 4px;
 }
+.string-row { display: flex; gap: 6px; margin-bottom: 10px; }
+.string-row.centered { justify-content: center; }
+.ridge {
+  display: flex; align-items: center; gap: 12px; margin: 2px 0 12px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted);
+}
+.ridge::before, .ridge::after { content: ''; flex: 1; border-top: 1px solid var(--axis); }
 .panel {
+  flex: 0 0 calc((100% - 60px) / 11);   /* one module width: 11 across + 10 gaps */
   aspect-ratio: 5 / 6;
   border-radius: 4px;
   border: 1px solid var(--border);
   padding: 7px 9px;
   display: flex; flex-direction: column;
-  font-size: 11px; cursor: default;
+  font-size: 11px; cursor: default; min-width: 0;
 }
 .panel .sn {
   font-family: 'IBM Plex Mono', monospace; font-size: 9px;
@@ -458,7 +471,7 @@ footer.colophon {
           <div class="legend" id="monthly-legend"></div>
           <button class="toggle-table" data-toggle="monthly-table">Table</button>
         </div>
-        <p class="sub" style="font-size:11.5px;color:var(--text-muted);margin:0 0 10px">Complete days only — partial and catch-up days are excluded.</p>
+        <p class="sub" style="font-size:11.5px;color:var(--text-muted);margin:0 0 10px">Whole-month totals — outage catch-up rows are folded in.</p>
         <div class="chart-wrap">
           <svg class="chart" id="monthly" viewBox="0 0 520 240" role="img" aria-label="Monthly production and consumption"></svg>
           <div class="tooltip" id="monthly-tip"></div>
@@ -469,7 +482,7 @@ footer.colophon {
       <section class="card">
         <div class="card-head">
           <h2 class="eyebrow">Net grid</h2>
-          <p class="sub">Above zero you bought power; below it you sold.</p>
+          <p class="sub">Above zero you imported power; below it you exported.</p>
         </div>
         <div class="chart-wrap">
           <svg class="chart" id="netgrid" viewBox="0 0 520 240" role="img" aria-label="Monthly net grid exchange"></svg>
@@ -483,7 +496,7 @@ footer.colophon {
         <h2 class="eyebrow">The array</h2>
         <p class="sub" id="array-sub"></p>
       </div>
-      <div class="array" id="array"></div>
+      <div class="roof-scroll"><div class="roof" id="array"></div></div>
       <div class="array-foot">
         <span>today, less</span>
         <span class="ramp" id="array-ramp"></span>
@@ -770,7 +783,7 @@ function renderReadouts(live, peak, loadPeak) {
   const dirColor = exporting ? css('--exp') : css('--imp');
   box.appendChild(tile(exporting ? 'Exporting' : 'Importing', dirColor, Math.abs(net),
     t.net_kwh !== undefined
-      ? `<b>${fmt(Math.abs(t.net_kwh))} kWh</b> ${t.net_kwh < 0 ? 'sold' : 'bought'} today`
+      ? `<b>${fmt(Math.abs(t.net_kwh))} kWh</b> ${t.net_kwh < 0 ? 'exported' : 'imported'} today`
       : '',
     null));
 }
@@ -887,7 +900,7 @@ function renderMonthly(history) {
         const box = svg.getBoundingClientRect();
         tip.innerHTML = `<b>${monthName(m.month)}</b>`
           + series.map(ss => `<div class="row"><span class="sw" style="background:${ss.color}"></span>${ss.name}<span class="num">${fmt(ss.get(m), 0)} kWh</span></div>`).join('')
-          + `<div class="row">days<span class="num">${m.days}</span></div>`;
+          + `<div class="row">metered days<span class="num">${m.days}</span></div>`;
         tip.style.opacity = 1;
         tip.style.left = `${cx / W * box.width}px`;
         tip.style.top = `${Y(Math.max(m.pv_kwh, m.consumption_kwh)) / H * box.height - 8}px`;
@@ -899,7 +912,7 @@ function renderMonthly(history) {
   });
 
   buildTable($('monthly-table'),
-    ['Month', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Days'],
+    ['Month', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Metered days'],
     months.slice().reverse().map(m => [m.month, fmt(m.pv_kwh, 0), fmt(m.consumption_kwh, 0),
       { v: fmt(m.net_kwh, 0), cls: m.net_kwh < 0 ? 'exp' : '' }, m.days]));
 }
@@ -946,7 +959,7 @@ function renderNetGrid(history) {
     const r = el('path', { d: barPath(cx - barW / 2, zero, barW, h, v >= 0 ? 1 : -1), fill: color });
     r.addEventListener('mouseenter', () => {
       const box = svg.getBoundingClientRect();
-      tip.innerHTML = `<b>${monthName(m.month)}</b><div class="row"><span class="sw" style="background:${color}"></span>${v >= 0 ? 'bought' : 'sold'}<span class="num">${fmt(Math.abs(v), 0)} kWh</span></div>`;
+      tip.innerHTML = `<b>${monthName(m.month)}</b><div class="row"><span class="sw" style="background:${color}"></span>${v >= 0 ? 'imported' : 'exported'}<span class="num">${fmt(Math.abs(v), 0)} kWh</span></div>`;
       tip.style.opacity = 1;
       tip.style.left = `${cx / W * box.width}px`;
       tip.style.top = `${(v >= 0 ? Y(v) : zero) / H * box.height - 8}px`;
@@ -958,18 +971,31 @@ function renderNetGrid(history) {
 }
 
 /* ---------- the array ---------------------------------------------------
-   Each microinverter drawn as the panel it sits under, shaded on a
-   single-hue amber ramp by today's production.                            */
+   Each microinverter drawn as the panel it sits under, placed as on the
+   installer's as-built drawing: strings 1 and 2 on one roof face (string 2
+   along the ridge), string 3 on the other face. Serial tails from the
+   drawing's barcodes; shading is a single-hue amber ramp by today's
+   production. The light half of the ramp only: a healthy near-uniform
+   array reads as a wall of gold, and a laggard drops visibly toward pale. */
+const ROOF = [
+  { label: 'string 1 · 11 modules', centered: false, tails: [
+    '047308', '050299', '050387', '048224', '050005', '051530',
+    '048361', '051192', '047706', '047503', '050361'] },
+  { label: 'string 2 · 10 modules', centered: true, tails: [
+    '048201', '054933', '055544', '051384', '048167',
+    '048213', '048757', '050789', '050205', '051371'] },
+  { ridge: true },
+  { label: 'string 3 · 4 modules', centered: false, tails: [
+    '050558', '051544', '047902', '043268'] },
+];
+
 function renderArray(live) {
   const box = $('array');
   clear(box);
   const list = live.inverters || [];
   $('array-sub').textContent =
-    `${list.length} microinverters, sorted by serial · shaded by today's production`;
+    `${list.length} microinverters in three strings, drawn as they sit on the roof · shaded by today's production`;
 
-  /* The light half of the amber ramp only: a healthy near-uniform array reads
-     as a wall of gold, not a wall of brown, and dark ink clears contrast on
-     every step. A laggard drops visibly toward pale. */
   const ramp = ['--amber-100', '--amber-250', '--amber-400'].map(css);
   const rampBox = $('array-ramp');
   clear(rampBox);
@@ -981,10 +1007,16 @@ function renderArray(live) {
 
   const vals = list.map(i => i.today_kwh).filter(v => v !== null && v !== undefined);
   const max = Math.max(...vals, 0.001);
+  const bySerialTail = new Map(list.map(inv => [inv.serial.slice(-6), inv]));
 
-  for (const inv of list) {
+  const panelCell = inv => {
     const cell = document.createElement('div');
     cell.className = 'panel';
+    if (!inv) {
+      cell.innerHTML = `<div class="sn">—</div><div class="kwh">—</div>`;
+      cell.title = 'No data from this module';
+      return cell;
+    }
     const v = inv.today_kwh;
     if (v !== null && v !== undefined) {
       const idx = Math.min(ramp.length - 1, Math.floor(v / max * ramp.length));
@@ -999,7 +1031,43 @@ function renderArray(live) {
       `${low ? `${inv.pct_of_avg}% of avg` : (inv.state || 'ok').toLowerCase()}</div>`;
     cell.title = `${inv.serial}\n${fmt(inv.kw, 3)} kW now\n${fmt(v, 2)} kWh today\n${fmt(inv.lifetime_kwh, 0)} kWh lifetime`
       + (inv.pct_of_avg !== undefined ? `\n${inv.pct_of_avg}% of array average` : '');
-    box.appendChild(cell);
+    return cell;
+  };
+
+  const placed = new Set();
+  for (const strip of ROOF) {
+    if (strip.ridge) {
+      const r = document.createElement('div');
+      r.className = 'ridge';
+      r.textContent = 'ridge';
+      box.appendChild(r);
+      continue;
+    }
+    const lab = document.createElement('div');
+    lab.className = 'string-label';
+    lab.textContent = strip.label;
+    box.appendChild(lab);
+    const row = document.createElement('div');
+    row.className = 'string-row' + (strip.centered ? ' centered' : '');
+    for (const tail of strip.tails) {
+      row.appendChild(panelCell(bySerialTail.get(tail)));
+      placed.add(tail);
+    }
+    box.appendChild(row);
+  }
+
+  // Any inverter the drawing doesn't place (e.g. a replaced unit with a new
+  // serial) still gets shown rather than silently dropped.
+  const unplaced = list.filter(inv => !placed.has(inv.serial.slice(-6)));
+  if (unplaced.length) {
+    const lab = document.createElement('div');
+    lab.className = 'string-label';
+    lab.textContent = 'not on the drawing';
+    box.appendChild(lab);
+    const row = document.createElement('div');
+    row.className = 'string-row';
+    for (const inv of unplaced) row.appendChild(panelCell(inv));
+    box.appendChild(row);
   }
 }
 
