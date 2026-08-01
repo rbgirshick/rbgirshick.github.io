@@ -5,11 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<title>Solar</title>
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<title>Ironhorse Solar</title>
+<script>
+/* Apply the saved theme before first paint to avoid a flash.
+   ?theme=light|dark overrides for this visit without persisting. */
+(() => { const q = new URLSearchParams(location.search).get('theme');
+         const t = q || localStorage.getItem('solar-theme');
+         if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); })();
+</script>
 <style>
-/* Palette: the dataviz reference instance, values unchanged.
-   Categorical slots 1-3 only (blue/orange/aqua) - that subset is documented as
-   clearing the all-pairs CVD gate in both modes. Nothing here is a generated hue. */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url(fonts/IBMPlexSans-var.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/IBMPlexMono-400.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(fonts/IBMPlexMono-500.woff2) format('woff2');
+}
+
+/* Chart palette: the dataviz reference instance. Series order gold/blue/aqua was
+   re-validated with the palette validator in both modes (all checks pass; the
+   light-mode contrast WARN on gold and aqua is covered by the relief rule -
+   every chart here has direct labels or a table twin). */
 .viz-root {
   color-scheme: light;
   --surface-1:      #fcfcfb;
@@ -20,21 +52,22 @@
   --grid:           #e1e0d9;
   --axis:           #c3c2b7;
   --border:         rgba(11,11,11,0.10);
-  --series-1:       #2a78d6;  /* production */
-  --series-2:       #eb6834;  /* consumption */
-  --series-3:       #1baf7a;  /* net grid */
-  --diverge-pos:    #2a78d6;  /* import */
-  --diverge-neg:    #d03b3b;  /* export */
-  --diverge-mid:    #f0efec;
-  --seq-100:        #cde2fb;
-  --seq-250:        #86b6ef;
-  --seq-400:        #3987e5;
-  --seq-550:        #1c5cab;
-  --seq-700:        #0d366b;
+  --prod:           #eda100;  /* production: the sun's color */
+  --cons:           #2a78d6;  /* consumption */
+  --net:            #1baf7a;  /* net grid (line contexts) */
+  --imp:            #2a78d6;  /* diverging: importing, cool */
+  --exp:            #eb6834;  /* diverging: exporting, warm */
+  --amber-100:      #f9e6bb;  /* sequential ramp for panel shading */
+  --amber-250:      #f3c96f;
+  --amber-400:      #eda100;
+  --amber-550:      #b17a00;
+  --amber-700:      #6f4d00;
   --good:           #0ca30c;
+  --good-text:      #006300;
   --warning:        #fab219;
-  --serious:        #ec835a;
   --critical:       #d03b3b;
+  --sun:            #eda100;
+  --hero-tint:      color-mix(in srgb, #eda100 4%, #fcfcfb);
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) .viz-root {
@@ -47,12 +80,14 @@
     --grid:           #2c2c2a;
     --axis:           #383835;
     --border:         rgba(255,255,255,0.10);
-    --series-1:       #3987e5;
-    --series-2:       #d95926;
-    --series-3:       #199e70;
-    --diverge-pos:    #3987e5;
-    --diverge-neg:    #d03b3b;
-    --diverge-mid:    #383835;
+    --prod:           #c98500;
+    --cons:           #3987e5;
+    --net:            #199e70;
+    --imp:            #3987e5;
+    --exp:            #d95926;
+    --good-text:      #0ca30c;
+    --sun:            #eda100;
+    --hero-tint:      color-mix(in srgb, #eda100 5%, #1a1a19);
   }
 }
 :root[data-theme="dark"] .viz-root {
@@ -65,52 +100,84 @@
   --grid:           #2c2c2a;
   --axis:           #383835;
   --border:         rgba(255,255,255,0.10);
-  --series-1:       #3987e5;
-  --series-2:       #d95926;
-  --series-3:       #199e70;
-  --diverge-pos:    #3987e5;
-  --diverge-neg:    #d03b3b;
-  --diverge-mid:    #383835;
+  --prod:           #c98500;
+  --cons:           #3987e5;
+  --net:            #199e70;
+  --imp:            #3987e5;
+  --exp:            #d95926;
+  --good-text:      #0ca30c;
+  --sun:            #eda100;
+  --hero-tint:      color-mix(in srgb, #eda100 5%, #1a1a19);
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: var(--page, #f9f9f7);
-  color: var(--text-primary, #0b0b0b);
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  background: #f9f9f7;
+  color: #0b0b0b;
+  font-size: 14px;
+  line-height: 1.5;
 }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) body { background: #0d0d0d; color: #ffffff; }
+}
+:root[data-theme="dark"] body { background: #0d0d0d; color: #ffffff; }
 .viz-root {
   background: var(--page);
   color: var(--text-primary);
   min-height: 100vh;
-  padding: 20px 16px 56px;
-  max-width: 1180px;
+  padding: 22px 18px 40px;
+  max-width: 1120px;
   margin: 0 auto;
+}
+.mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace; }
+
+button:focus-visible, a:focus-visible, th:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: 2px;
 }
 
 /* --- header ------------------------------------------------------------ */
 header.top {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px;
-  margin-bottom: 20px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+  margin-bottom: 18px;
 }
-header.top h1 {
-  font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em;
+.wordmark { display: flex; align-items: center; gap: 10px; }
+.sun-disc {
+  width: 14px; height: 14px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 38% 34%, #ffd257, var(--sun) 70%);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--sun) 55%, transparent);
 }
-.meta { color: var(--text-secondary); font-size: 13px; }
+.wordmark .name { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.wordmark .name span { font-weight: 400; color: var(--text-secondary); }
 .spacer { flex: 1 1 auto; }
-.pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
-  border: 1px solid var(--border);
+.updated {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  color: var(--text-muted);
 }
-.pill .dot { width: 7px; height: 7px; border-radius: 50%; }
-.pill.ok    .dot { background: var(--good); }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 4px 11px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; position: relative; }
+.pill.ok .dot { background: var(--good); }
+.pill.ok .dot::after {
+  content: ''; position: absolute; inset: -3px; border-radius: 50%;
+  border: 1px solid var(--good); opacity: 0;
+  animation: ping 2.6s ease-out infinite;
+}
 .pill.stale .dot { background: var(--critical); }
+@keyframes ping { 0% { transform: scale(0.6); opacity: 0.7; } 70%, 100% { transform: scale(1.5); opacity: 0; } }
+
 button.ghost {
-  font: inherit; font-size: 12px; color: var(--text-secondary);
-  background: transparent; border: 1px solid var(--border);
-  border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-secondary); background: transparent;
+  border: 1px solid var(--border); border-radius: 7px; padding: 5px 11px; cursor: pointer;
 }
 button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
 
@@ -118,217 +185,339 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
 .card {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px 18px 18px;
-  margin-bottom: 16px;
+  border-radius: 12px;
+  padding: 18px 20px 20px;
+  margin-bottom: 14px;
 }
-.card > h2 {
-  font-size: 13px; font-weight: 600; margin: 0 0 2px;
-  color: var(--text-primary); letter-spacing: 0.01em;
+.card-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px;
+  margin-bottom: 12px;
 }
-.card > .sub { font-size: 12px; color: var(--text-muted); margin: 0 0 14px; }
+.eyebrow {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-secondary); margin: 0;
+}
+.card-head .sub { font-size: 12px; color: var(--text-muted); margin: 0; }
+.card-head .push { margin-left: auto; }
 
-/* --- KPI dials --------------------------------------------------------- */
-.kpi-row {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px; margin-bottom: 16px;
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 0; }
+.two-col .card { margin-bottom: 14px; }
+@media (max-width: 880px) { .two-col { grid-template-columns: 1fr; gap: 0; } }
+
+/* --- hero -------------------------------------------------------------- */
+.card.hero {
+  background: linear-gradient(180deg, var(--hero-tint), var(--surface-1) 60%);
+  padding-top: 20px;
 }
-.dial { text-align: center; }
-.dial svg { display: block; margin: 0 auto; overflow: visible; }
-.dial .label {
-  font-size: 12px; font-weight: 600; color: var(--text-secondary);
-  margin-bottom: 2px;
+.hero .date {
+  font-size: 12px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace;
 }
-.dial .value {
-  font-size: 40px; font-weight: 600; line-height: 1.05; letter-spacing: -0.02em;
-  /* proportional figures: this is a standalone display number */
+@keyframes rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+.reveal { animation: rise 0.55s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .reveal { animation: none; }
+  .pill.ok .dot::after, .sun-halo { animation: none !important; }
 }
-.dial .unit { font-size: 15px; font-weight: 500; color: var(--text-secondary); }
-.dial .foot { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.sun-halo { transform-box: fill-box; transform-origin: center; animation: halo 2.8s ease-out infinite; }
+@keyframes halo { 0% { transform: scale(0.6); opacity: 0.5; } 75%, 100% { transform: scale(2.1); opacity: 0; } }
+
+/* --- readouts ---------------------------------------------------------- */
+.readouts {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px;
+  margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--grid);
+}
+@media (max-width: 680px) { .readouts { grid-template-columns: 1fr; gap: 18px; } }
+.tile .label {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.13em; text-transform: uppercase; color: var(--text-secondary);
+  display: flex; align-items: center; gap: 7px;
+}
+.tile .label .key { width: 9px; height: 9px; border-radius: 2.5px; flex: none; }
+.tile .value {
+  font-size: 34px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15;
+  margin-top: 4px;
+}
+.tile .value .unit { font-size: 15px; font-weight: 400; color: var(--text-secondary); letter-spacing: 0; }
+.tile .meter { height: 4px; border-radius: 2px; margin-top: 9px; overflow: hidden; }
+.tile .meter i { display: block; height: 100%; border-radius: 2px; }
+.tile .foot { font-size: 12px; color: var(--text-muted); margin-top: 7px; }
+.tile .foot b { font-weight: 500; color: var(--text-secondary); }
 
 /* --- charts ------------------------------------------------------------ */
-.chart-wrap { position: relative; overflow-x: auto; }
-svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-wrap { position: relative; }
+svg.chart { display: block; width: 100%; height: auto; overflow: visible;
+  font-family: 'IBM Plex Mono', monospace; }
+svg.chart text { font-variant-numeric: tabular-nums; }
 .legend {
-  display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 10px;
+  display: flex; flex-wrap: wrap; gap: 5px 16px;
   font-size: 12px; color: var(--text-secondary);
 }
-.legend span.item { display: inline-flex; align-items: center; gap: 6px; }
-.legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+.legend .item { display: inline-flex; align-items: center; gap: 6px; }
+.legend .swatch { width: 10px; height: 10px; border-radius: 3px; }
 .tooltip {
   position: absolute; pointer-events: none; opacity: 0;
   transform: translate(-50%, -100%);
   background: var(--surface-1); color: var(--text-primary);
   border: 1px solid var(--border); border-radius: 8px;
-  padding: 8px 10px; font-size: 12px; line-height: 1.5;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.14); white-space: nowrap; z-index: 20;
+  padding: 8px 10px; font-size: 11.5px; line-height: 1.6;
+  font-family: 'IBM Plex Mono', monospace;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.16); white-space: nowrap; z-index: 20;
   transition: opacity .1s;
 }
-.tooltip b { font-weight: 600; }
-.tooltip .row { display: flex; align-items: center; gap: 6px; }
+.tooltip b { font-weight: 500; }
+.tooltip .row { display: flex; align-items: center; gap: 7px; }
 .tooltip .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
-.tooltip .num { margin-left: auto; padding-left: 14px; font-variant-numeric: tabular-nums; }
+.tooltip .num { margin-left: auto; padding-left: 16px; }
 
-/* --- inverter grid ----------------------------------------------------- */
-.inv-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px;
+.toggle-table {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-secondary); background: transparent;
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; cursor: pointer;
 }
-.inv {
-  border: 1px solid var(--border); border-radius: 8px; padding: 8px 9px;
-  font-size: 11px; cursor: default; position: relative;
+.toggle-table:hover { color: var(--text-primary); background: var(--page); }
+
+/* --- filmstrip --------------------------------------------------------- */
+.strip-scroll { overflow-x: auto; }
+.strip {
+  display: grid; grid-template-columns: repeat(14, minmax(54px, 1fr));
+  gap: 8px; min-width: 700px;
 }
-.inv .sn { color: var(--text-muted); font-size: 10px; letter-spacing: .01em; }
-.inv .kwh { font-size: 17px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; }
-.inv .state { display: flex; align-items: center; gap: 5px; margin-top: 3px; color: var(--text-secondary); }
-.inv .state .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
-.scale-legend { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); margin-top: 12px; }
-.scale-legend .ramp { display: flex; }
-.scale-legend .ramp i { width: 22px; height: 9px; display: block; }
+.day { text-align: center; }
+.day svg { display: block; width: 100%; height: auto; }
+.day .d {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  color: var(--text-muted); margin-top: 5px; white-space: nowrap;
+}
+.day .v {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  color: var(--text-secondary); white-space: nowrap;
+}
+.day.today .d { color: var(--text-primary); font-weight: 500; }
+.day.today .d::before {
+  content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--sun); margin-right: 4px; vertical-align: 1px;
+}
+
+/* --- array ------------------------------------------------------------- */
+.array {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px;
+}
+.panel {
+  aspect-ratio: 5 / 6;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  padding: 7px 9px;
+  display: flex; flex-direction: column;
+  font-size: 11px; cursor: default;
+}
+.panel .sn {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px;
+  letter-spacing: 0.04em; opacity: 0.75;
+}
+.panel .kwh { font-size: 15px; font-weight: 600; margin-top: auto; letter-spacing: -0.01em; }
+.panel .kwh .u { font-size: 9.5px; font-weight: 400; opacity: 0.8; }
+.panel .state {
+  display: flex; align-items: center; gap: 5px; margin-top: 2px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px; opacity: 0.9;
+}
+.panel .state .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.array-foot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+  color: var(--text-muted); margin-top: 14px;
+}
+.array-foot .ramp { display: flex; border-radius: 3px; overflow: hidden; }
+.array-foot .ramp i { width: 20px; height: 9px; display: block; }
 
 /* --- tables ------------------------------------------------------------ */
-.table-wrap { overflow-x: auto; max-height: 460px; overflow-y: auto; }
-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.table-wrap { overflow-x: auto; max-height: 440px; overflow-y: auto; }
+table {
+  border-collapse: collapse; width: 100%;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+}
 th, td { text-align: right; padding: 6px 10px; white-space: nowrap; }
 th:first-child, td:first-child { text-align: left; }
 th {
   position: sticky; top: 0; background: var(--surface-1); z-index: 1;
-  font-weight: 600; color: var(--text-secondary); font-size: 11.5px;
+  font-weight: 500; color: var(--text-secondary); font-size: 10px;
+  letter-spacing: 0.07em; text-transform: uppercase;
   border-bottom: 1px solid var(--axis); cursor: pointer; user-select: none;
 }
 th:hover { color: var(--text-primary); }
 td { border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
 tbody tr:hover td { background: var(--page); }
-td.alert { text-align: left; white-space: normal; color: var(--text-secondary); font-size: 11.5px; max-width: 340px; }
-.neg { color: var(--diverge-neg); }
+td.alert {
+  text-align: left; white-space: normal; color: var(--text-secondary);
+  font-size: 10.5px; max-width: 340px;
+}
+td.exp { color: var(--good-text); }
 
 /* --- alerts ------------------------------------------------------------ */
 .alert-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
-.alert-list li { display: flex; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--grid); align-items: flex-start; }
+.alert-list li {
+  display: flex; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid var(--grid); align-items: flex-start;
+}
 .alert-list li:last-child { border-bottom: 0; }
-.alert-list .ico { flex: none; font-size: 13px; line-height: 1.45; }
-.alert-list .lv-info .ico { color: var(--text-muted); }
-.alert-list .lv-warn .ico { color: var(--warning); }
-.alert-list .lv-error .ico { color: var(--critical); }
+.alert-list .ico {
+  flex: none; width: 17px; height: 17px; border-radius: 50%;
+  font-size: 10.5px; font-weight: 600; line-height: 17px; text-align: center;
+  margin-top: 2px; font-family: 'IBM Plex Mono', monospace;
+}
+.alert-list .lv-ok   .ico { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good-text); }
+.alert-list .lv-info .ico { background: var(--grid); color: var(--text-secondary); }
+.alert-list .lv-warn .ico { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--text-primary); }
+.alert-list .lv-error .ico { background: color-mix(in srgb, var(--critical) 18%, transparent); color: var(--critical); }
+.alert-list .txt { color: var(--text-secondary); }
 
 /* --- meters ------------------------------------------------------------ */
-.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 26px; font-size: 12.5px; }
-.meters dl { margin: 0; }
-.meters .mt { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
-.meters .kv { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--grid); }
+.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px 26px; }
+.meters .mt {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-secondary); margin-bottom: 7px;
+}
+.meters .kv {
+  display: flex; justify-content: space-between; gap: 12px; padding: 4px 0;
+  border-bottom: 1px solid var(--grid); font-size: 12px;
+}
 .meters .kv:last-child { border-bottom: 0; }
 .meters .kv .k { color: var(--text-muted); }
-.meters .kv .v { font-variant-numeric: tabular-nums; }
+.meters .kv .v { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; }
 
-/* --- gate / errors ----------------------------------------------------- */
-.gate { max-width: 560px; margin: 60px auto; text-align: left; }
-.gate h1 { font-size: 18px; margin: 0 0 10px; }
-.gate p { color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
+/* --- footer / gate ------------------------------------------------------ */
+footer.colophon {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+  color: var(--text-muted); text-align: center; margin-top: 28px; line-height: 1.9;
+}
+.gate { max-width: 460px; margin: 12vh auto 0; text-align: center; }
+.gate .sun-disc { width: 26px; height: 26px; margin: 0 auto 16px; }
+.gate h1 { font-size: 18px; font-weight: 600; margin: 0 0 10px; letter-spacing: -0.01em; }
+.gate p { color: var(--text-secondary); font-size: 13.5px; line-height: 1.7; }
 .gate code {
+  font-family: 'IBM Plex Mono', monospace;
   background: var(--surface-1); border: 1px solid var(--border);
-  padding: 2px 6px; border-radius: 4px; font-size: 12.5px; word-break: break-all;
+  padding: 2px 6px; border-radius: 4px; font-size: 12px; word-break: break-all;
 }
 .hidden { display: none !important; }
-.toggle-table {
-  font: inherit; font-size: 11.5px; color: var(--text-secondary);
-  background: transparent; border: 1px solid var(--border);
-  border-radius: 6px; padding: 3px 9px; cursor: pointer; margin-left: auto;
-}
-.card-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
-.card-head h2 { margin: 0; }
-.card-head .sub { margin: 0; }
 </style>
 </head>
 <body>
 <div class="viz-root">
 
   <div id="gate" class="gate">
-    <h1>Solar dashboard</h1>
+    <div class="sun-disc"></div>
+    <h1>Ironhorse Solar</h1>
     <p id="gate-msg">Decrypting…</p>
   </div>
 
   <div id="app" class="hidden">
     <header class="top">
-      <h1>Solar</h1>
-      <span class="meta" id="updated"></span>
+      <div class="wordmark">
+        <span class="sun-disc"></span>
+        <span class="name">Ironhorse <span>Solar</span></span>
+      </div>
       <span class="spacer"></span>
+      <span class="updated" id="updated"></span>
       <span class="pill ok" id="status"><span class="dot"></span><span id="status-text">live</span></span>
       <button class="ghost" id="theme-btn" type="button">Theme</button>
       <button class="ghost" id="forget-btn" type="button" title="Remove the stored decryption key from this browser">Forget key</button>
     </header>
 
-    <div class="kpi-row" id="kpis"></div>
-
-    <section class="card">
+    <section class="card hero">
       <div class="card-head">
-        <h2>Today</h2>
-        <p class="sub" id="intraday-sub"></p>
-        <button class="toggle-table" data-toggle="intraday-table">Table</button>
+        <h2 class="eyebrow">Today</h2>
+        <span class="date" id="hero-date"></span>
+        <span class="push"></span>
+        <div class="legend" id="hero-legend"></div>
+        <button class="toggle-table" data-toggle="hero-table">Table</button>
       </div>
-      <div class="legend" id="intraday-legend"></div>
       <div class="chart-wrap">
-        <svg class="chart" id="intraday" viewBox="0 0 1000 300" role="img" aria-label="Power over time"></svg>
-        <div class="tooltip" id="intraday-tip"></div>
+        <svg class="chart" id="hero-chart" viewBox="0 0 1000 300" role="img" aria-label="Today's power over the day"></svg>
+        <div class="tooltip" id="hero-tip"></div>
       </div>
-      <div class="table-wrap hidden" id="intraday-table"></div>
+      <div class="readouts" id="readouts"></div>
+      <div class="table-wrap hidden" id="hero-table" style="margin-top:14px"></div>
     </section>
 
     <section class="card">
       <div class="card-head">
-        <h2>Monthly energy</h2>
-        <p class="sub">Complete days only — partial and catch-up rows are excluded.</p>
-        <button class="toggle-table" data-toggle="monthly-table">Table</button>
+        <h2 class="eyebrow">Last 14 days</h2>
+        <p class="sub">Production, one frame per day, on a shared scale.</p>
       </div>
-      <div class="legend" id="monthly-legend"></div>
-      <div class="chart-wrap">
-        <svg class="chart" id="monthly" viewBox="0 0 1000 260" role="img" aria-label="Monthly production and consumption"></svg>
-        <div class="tooltip" id="monthly-tip"></div>
-      </div>
-      <div class="table-wrap hidden" id="monthly-table"></div>
+      <div class="strip-scroll"><div class="strip" id="strip"></div></div>
     </section>
+
+    <div class="two-col">
+      <section class="card">
+        <div class="card-head">
+          <h2 class="eyebrow">Monthly energy</h2>
+          <span class="push"></span>
+          <div class="legend" id="monthly-legend"></div>
+          <button class="toggle-table" data-toggle="monthly-table">Table</button>
+        </div>
+        <p class="sub" style="font-size:11.5px;color:var(--text-muted);margin:0 0 10px">Complete days only — partial and catch-up days are excluded.</p>
+        <div class="chart-wrap">
+          <svg class="chart" id="monthly" viewBox="0 0 520 240" role="img" aria-label="Monthly production and consumption"></svg>
+          <div class="tooltip" id="monthly-tip"></div>
+        </div>
+        <div class="table-wrap hidden" id="monthly-table" style="margin-top:12px"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2 class="eyebrow">Net grid</h2>
+          <p class="sub">Above zero you bought power; below it you sold.</p>
+        </div>
+        <div class="chart-wrap">
+          <svg class="chart" id="netgrid" viewBox="0 0 520 240" role="img" aria-label="Monthly net grid exchange"></svg>
+          <div class="tooltip" id="netgrid-tip"></div>
+        </div>
+      </section>
+    </div>
 
     <section class="card">
       <div class="card-head">
-        <h2>Monthly net grid</h2>
-        <p class="sub">Above the line you imported; below it you exported.</p>
+        <h2 class="eyebrow">The array</h2>
+        <p class="sub" id="array-sub"></p>
       </div>
-      <div class="chart-wrap">
-        <svg class="chart" id="netgrid" viewBox="0 0 1000 220" role="img" aria-label="Monthly net grid"></svg>
-        <div class="tooltip" id="netgrid-tip"></div>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h2>Inverters</h2>
-        <p class="sub" id="inv-sub"></p>
-      </div>
-      <div class="inv-grid" id="inverters"></div>
-      <div class="scale-legend">
-        <span>Today, less</span>
-        <span class="ramp" id="inv-ramp"></span>
+      <div class="array" id="array"></div>
+      <div class="array-foot">
+        <span>today, less</span>
+        <span class="ramp" id="array-ramp"></span>
         <span>more</span>
       </div>
     </section>
 
-    <section class="card" id="alerts-card">
-      <div class="card-head"><h2>Alerts</h2></div>
-      <ul class="alert-list" id="alerts"></ul>
-    </section>
+    <div class="two-col">
+      <section class="card">
+        <div class="card-head"><h2 class="eyebrow">Alerts</h2></div>
+        <ul class="alert-list" id="alerts"></ul>
+      </section>
 
-    <section class="card">
-      <div class="card-head"><h2>Meters</h2>
-        <p class="sub">Resolved by serial number, never by device index.</p>
-      </div>
-      <div class="meters" id="meters"></div>
-    </section>
+      <section class="card">
+        <div class="card-head">
+          <h2 class="eyebrow">Meters</h2>
+          <p class="sub">Resolved by serial number, never device index.</p>
+        </div>
+        <div class="meters" id="meters"></div>
+      </section>
+    </div>
 
     <section class="card">
       <div class="card-head">
-        <h2>Daily history</h2>
+        <h2 class="eyebrow">Daily log</h2>
         <p class="sub" id="history-sub"></p>
       </div>
       <div class="table-wrap" id="history"></div>
     </section>
+
+    <footer class="colophon">
+      read every 15 minutes by a raspberry pi tucked inside the pvs6<br>
+      encrypted before it leaves the house · the key stays on this device
+    </footer>
   </div>
 </div>
 
@@ -346,16 +535,16 @@ const $ = id => document.getElementById(id);
 const fmt = (n, d = 1) => (n === null || n === undefined || Number.isNaN(n)) ? '—' : n.toFixed(d);
 const css = name => getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(name).trim();
 
-let KEY = null;      // CryptoKey
-let DATA = {};       // decrypted payloads
+let KEY = null;
+let DATA = {};
 let timer = null;
+let firstRender = true;
 
 /* ---------- key handling ------------------------------------------------
    The key arrives in the URL fragment, which browsers never send to a server.
-   We stash it in localStorage and strip it from the address bar so the key
-   does not sit in the visible URL, then reuse it on later visits - which is
-   what lets notification click-throughs (which deliberately carry no key)
-   still work.                                                              */
+   We stash it in localStorage and strip it from the address bar, then reuse
+   it on later visits - which is what lets notification click-throughs
+   (which deliberately carry no key) still work.                            */
 function readKeyMaterial() {
   const m = location.hash.match(/[#&]k=([A-Za-z0-9_\-=]+)/);
   if (m) {
@@ -397,258 +586,308 @@ function el(tag, attrs = {}) {
   return n;
 }
 function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
-
-/* ---------- dials -------------------------------------------------------
-   These are METERS in polar form: a single value against a scale, on a
-   same-ramp track. Not a pie - there is one value and a track, never a set
-   of slices being compared.                                               */
-function dial(label, value, unit, max, color, foot, signed = false) {
-  const wrap = document.createElement('div');
-  wrap.className = 'card dial';
-
-  const W = 200, H = 104, cx = 100, cy = 96, r = 78;
-  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H });
-
-  const polar = (frac) => {
-    const a = Math.PI * (1 - Math.min(Math.max(frac, 0), 1));
-    return [cx + r * Math.cos(a), cy - r * Math.sin(a)];
-  };
-  const arc = (from, to) => {
-    const [x1, y1] = polar(from), [x2, y2] = polar(to);
-    return `M ${x1} ${y1} A ${r} ${r} 0 ${(to - from) > 0.5 ? 1 : 0} 1 ${x2} ${y2}`;
-  };
-
-  // track
-  svg.appendChild(el('path', {
-    d: arc(0, 1), fill: 'none', stroke: css('--grid'), 'stroke-width': 9, 'stroke-linecap': 'round'
-  }));
-
-  const frac = max > 0 ? Math.abs(value) / max : 0;
-  if (frac > 0.002) {
-    svg.appendChild(el('path', {
-      d: arc(0, Math.min(frac, 1)), fill: 'none', stroke: color,
-      'stroke-width': 9, 'stroke-linecap': 'round'
-    }));
-  }
-  // scale ends
-  const tick = (frac_, text) => {
-    const [x, y] = polar(frac_);
-    const t = el('text', {
-      x: x + (frac_ === 0 ? 2 : -2), y: y + 15,
-      'text-anchor': frac_ === 0 ? 'start' : 'end',
-      'font-size': 10, fill: css('--text-muted')
-    });
-    t.textContent = text;
-    svg.appendChild(t);
-  };
-  tick(0, '0');
-  tick(1, fmt(max, max >= 10 ? 0 : 1));
-
-  wrap.appendChild(Object.assign(document.createElement('div'), { className: 'label', textContent: label }));
-  wrap.appendChild(svg);
-
-  const v = document.createElement('div');
-  v.className = 'value';
-  v.style.color = color;
-  v.innerHTML = `${signed && value > 0 ? '+' : ''}${fmt(value, 2)}<span class="unit"> ${unit}</span>`;
-  wrap.appendChild(v);
-
-  wrap.appendChild(Object.assign(document.createElement('div'), { className: 'foot', textContent: foot }));
-  return wrap;
+function text(svg, x, y, str, attrs = {}) {
+  const t = el('text', { x, y, 'font-size': 10, fill: css('--text-muted'), ...attrs });
+  t.textContent = str;
+  svg.appendChild(t);
+  return t;
 }
-
-function renderKpis(live) {
-  const box = $('kpis');
+/* Bar with a 3px rounded data-end and a square baseline. dir: 1 grows up, -1 down. */
+function barPath(x, y0, w, h, dir) {
+  const r = Math.min(3, w / 2, h);
+  if (dir > 0) {
+    const y = y0 - h;
+    return `M ${x} ${y0} L ${x} ${y + r} Q ${x} ${y} ${x + r} ${y} L ${x + w - r} ${y} Q ${x + w} ${y} ${x + w} ${y + r} L ${x + w} ${y0} Z`;
+  }
+  const y = y0 + h;
+  return `M ${x} ${y0} L ${x} ${y - r} Q ${x} ${y} ${x + r} ${y} L ${x + w - r} ${y} Q ${x + w} ${y} ${x + w} ${y - r} L ${x + w} ${y0} Z`;
+}
+function niceStep(raw) {
+  const p = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-9))));
+  const n = raw / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+function legendInto(id, items) {
+  const box = $(id);
   clear(box);
-  const c = live.current || {};
-  const t = live.today || {};
-
-  // Scale the production dial to the observed system ceiling, rounded up.
-  const peak = Math.max(7, Math.ceil((DATA.intraday?.rows || []).reduce((m, r) => Math.max(m, r[1]), 0)));
-  const loadPeak = Math.max(5, Math.ceil((DATA.intraday?.rows || []).reduce((m, r) => Math.max(m, r[2]), 0)));
-
-  box.appendChild(dial('Producing now', c.pv_kw ?? 0, 'kW', peak, css('--series-1'),
-    t.pv_kwh !== undefined ? `${fmt(t.pv_kwh)} kWh today` : ''));
-  box.appendChild(dial('Using now', c.consumption_kw ?? 0, 'kW', loadPeak, css('--series-2'),
-    t.consumption_kwh !== undefined ? `${fmt(t.consumption_kwh)} kWh today` : ''));
-
-  const net = c.net_kw ?? 0;
-  const exporting = net < 0;
-  box.appendChild(dial(exporting ? 'Exporting now' : 'Importing now', Math.abs(net), 'kW',
-    Math.max(peak, loadPeak), exporting ? css('--diverge-neg') : css('--diverge-pos'),
-    t.net_kwh !== undefined
-      ? `${fmt(Math.abs(t.net_kwh))} kWh ${t.net_kwh < 0 ? 'exported' : 'imported'} today`
-      : ''));
-}
-
-/* ---------- intraday line chart ---------------------------------------- */
-function renderIntraday(intraday) {
-  const svg = $('intraday');
-  clear(svg);
-  const rows = intraday.rows || [];
-  const W = 1000, H = 300, padL = 46, padR = 14, padT = 12, padB = 28;
-
-  $('intraday-sub').textContent = rows.length
-    ? `${rows.length} samples over the last ${intraday.days} days`
-    : 'no recent samples';
-
-  const series = [
-    { key: 1, name: 'Production', color: css('--series-1') },
-    { key: 2, name: 'Consumption', color: css('--series-2') },
-    { key: 3, name: 'Net grid', color: css('--series-3') },
-  ];
-
-  const legend = $('intraday-legend');
-  clear(legend);
-  for (const s of series) {
-    const item = document.createElement('span');
-    item.className = 'item';
-    item.innerHTML = `<span class="swatch" style="background:${s.color}"></span>${s.name}`;
-    legend.appendChild(item);
+  for (const [name, color] of items) {
+    const s = document.createElement('span');
+    s.className = 'item';
+    s.innerHTML = `<span class="swatch" style="background:${color}"></span>${name}`;
+    box.appendChild(s);
   }
+}
+const dayKey = ts => { const d = new Date(ts * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
-  if (!rows.length) return;
+/* ---------- hero: today ------------------------------------------------- */
+function renderHero(intraday, live) {
+  const svg = $('hero-chart');
+  clear(svg);
+  const all = intraday.rows || [];
+  if (!all.length) { $('hero-date').textContent = 'no samples yet'; renderReadouts(live, 1, 1); return; }
 
-  const xs = rows.map(r => r[0]);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs);
-  let lo = 0, hi = 0;
-  for (const r of rows) for (const k of [1, 2, 3]) { lo = Math.min(lo, r[k]); hi = Math.max(hi, r[k]); }
-  hi = Math.ceil(hi) || 1; lo = Math.floor(lo);
+  const todayStr = dayKey(all[all.length - 1][0]);
+  const rows = all.filter(r => dayKey(r[0]) === todayStr);
+  const dayStart = new Date(rows[0][0] * 1000); dayStart.setHours(0, 0, 0, 0);
+  const t0 = dayStart.getTime() / 1000;
 
-  const X = t => padL + (x1 === x0 ? 0 : (t - x0) / (x1 - x0)) * (W - padL - padR);
-  const Y = v => padT + (1 - (v - lo) / (hi - lo || 1)) * (H - padT - padB);
+  $('hero-date').textContent = dayStart.toLocaleDateString(undefined,
+    { weekday: 'long', month: 'long', day: 'numeric' });
 
-  // gridlines + y ticks (hairline, solid, recessive)
-  const step = Math.max(1, Math.round((hi - lo) / 5));
-  for (let v = lo; v <= hi; v += step) {
+  const PROD = css('--prod'), CONS = css('--cons'), NET = css('--net');
+  legendInto('hero-legend', [['Production', PROD], ['Consumption', CONS]]);
+
+  const W = 1000, H = 300, padL = 42, padR = 18, padT = 24, padB = 26;
+  const hi = Math.max(1, Math.ceil(Math.max(...rows.map(r => Math.max(r[1], r[2])))));
+  const X = t => padL + (t - t0) / 86400 * (W - padL - padR);
+  const Y = v => padT + (1 - v / hi) * (H - padT - padB);
+
+  // y grid: solid hairlines, mono ticks
+  const step = niceStep(hi / 4);
+  for (let v = 0; v <= hi + 1e-9; v += step) {
     svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
       stroke: v === 0 ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
-    const t = el('text', { x: padL - 8, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--text-muted') });
-    t.textContent = v;
-    svg.appendChild(t);
+    text(svg, padL - 8, Y(v) + 3.5, String(Math.round(v * 10) / 10), { 'text-anchor': 'end' });
   }
-  const yl = el('text', { x: padL - 8, y: padT - 2, 'text-anchor': 'end', 'font-size': 10, fill: css('--text-muted') });
-  yl.textContent = 'kW';
-  svg.appendChild(yl);
+  text(svg, padL - 8, padT - 11, 'kW', { 'text-anchor': 'end' });
 
-  // x ticks: one per day boundary
-  let lastDay = null;
-  for (const r of rows) {
-    const d = new Date(r[0] * 1000);
-    const key = d.toDateString();
-    if (key !== lastDay) {
-      lastDay = key;
-      const x = X(r[0]);
-      svg.appendChild(el('line', { x1: x, x2: x, y1: padT, y2: H - padB, stroke: css('--grid'), 'stroke-width': 1 }));
-      const t = el('text', { x: x + 4, y: H - padB + 16, 'font-size': 11, fill: css('--text-muted') });
-      t.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      svg.appendChild(t);
-    }
+  // x: hour marks at 6a / noon / 6p
+  for (const [h, lab] of [[6, '6 am'], [12, 'noon'], [18, '6 pm']]) {
+    const x = X(t0 + h * 3600);
+    svg.appendChild(el('line', { x1: x, x2: x, y1: padT, y2: H - padB, stroke: css('--grid'), 'stroke-width': 1 }));
+    text(svg, x, H - padB + 15, lab, { 'text-anchor': 'middle' });
   }
 
-  for (const s of series) {
-    const d = rows.map((r, i) => `${i ? 'L' : 'M'} ${X(r[0]).toFixed(1)} ${Y(r[s.key]).toFixed(1)}`).join(' ');
-    svg.appendChild(el('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2,
-      'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
-  }
+  // production: gold wash + 2px line, ending at now
+  const grad = el('linearGradient', { id: 'sunfill', x1: 0, y1: 0, x2: 0, y2: 1 });
+  grad.appendChild(el('stop', { offset: '0%', 'stop-color': PROD, 'stop-opacity': 0.20 }));
+  grad.appendChild(el('stop', { offset: '100%', 'stop-color': PROD, 'stop-opacity': 0.02 }));
+  const defs = el('defs'); defs.appendChild(grad); svg.appendChild(defs);
+
+  const line = k => rows.map((r, i) => `${i ? 'L' : 'M'} ${X(r[0]).toFixed(1)} ${Y(r[k]).toFixed(1)}`).join(' ');
+  const last = rows[rows.length - 1];
+  svg.appendChild(el('path', {
+    d: `${line(1)} L ${X(last[0]).toFixed(1)} ${Y(0)} L ${X(rows[0][0]).toFixed(1)} ${Y(0)} Z`,
+    fill: 'url(#sunfill)' }));
+  svg.appendChild(el('path', { d: line(2), fill: 'none', stroke: CONS, 'stroke-width': 2,
+    'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  svg.appendChild(el('path', { d: line(1), fill: 'none', stroke: PROD, 'stroke-width': 2,
+    'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+
+  // the sun, riding the current edge of the day
+  const sx = X(last[0]), sy = Y(last[1]);
+  const halo = el('circle', { cx: sx, cy: sy, r: 7, fill: 'none', stroke: css('--sun'), 'stroke-width': 1.5 });
+  if ((live.status || 'ok') === 'ok') halo.setAttribute('class', 'sun-halo');
+  else halo.setAttribute('opacity', 0);
+  svg.appendChild(halo);
+  svg.appendChild(el('circle', { cx: sx, cy: sy, r: 5, fill: css('--sun'),
+    stroke: css('--surface-1'), 'stroke-width': 2 }));
 
   // crosshair + tooltip
   const hair = el('line', { y1: padT, y2: H - padB, stroke: css('--axis'), 'stroke-width': 1, opacity: 0 });
   svg.appendChild(hair);
-  const dots = series.map(s => {
-    const c = el('circle', { r: 4, fill: s.color, stroke: css('--surface-1'), 'stroke-width': 2, opacity: 0 });
-    svg.appendChild(c);
-    return c;
+  const dots = [PROD, CONS].map(c => {
+    const d = el('circle', { r: 4, fill: c, stroke: css('--surface-1'), 'stroke-width': 2, opacity: 0 });
+    svg.appendChild(d);
+    return d;
   });
-  const tip = $('intraday-tip');
+  const tip = $('hero-tip');
   const hit = el('rect', { x: padL, y: padT, width: W - padL - padR, height: H - padT - padB,
     fill: 'transparent', style: 'cursor:crosshair' });
   svg.appendChild(hit);
-
   const move = ev => {
     const box = svg.getBoundingClientRect();
     const px = (ev.clientX - box.left) / box.width * W;
-    const t = x0 + (px - padL) / (W - padL - padR) * (x1 - x0);
+    const t = t0 + (px - padL) / (W - padL - padR) * 86400;
     let best = rows[0], bd = Infinity;
     for (const r of rows) { const d = Math.abs(r[0] - t); if (d < bd) { bd = d; best = r; } }
     hair.setAttribute('x1', X(best[0])); hair.setAttribute('x2', X(best[0])); hair.setAttribute('opacity', 1);
-    series.forEach((s, i) => {
-      dots[i].setAttribute('cx', X(best[0])); dots[i].setAttribute('cy', Y(best[s.key]));
+    [1, 2].forEach((k, i) => {
+      dots[i].setAttribute('cx', X(best[0])); dots[i].setAttribute('cy', Y(best[k]));
       dots[i].setAttribute('opacity', 1);
     });
     const when = new Date(best[0] * 1000);
-    tip.innerHTML = `<b>${when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</b>`
-      + series.map(s => `<div class="row"><span class="sw" style="background:${s.color}"></span>${s.name}<span class="num">${fmt(best[s.key], 2)} kW</span></div>`).join('');
+    tip.innerHTML = `<b>${when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</b>`
+      + [['Production', PROD, best[1]], ['Consumption', CONS, best[2]], ['Net grid', NET, best[3]]]
+        .map(([n, c, v]) => `<div class="row"><span class="sw" style="background:${c}"></span>${n}<span class="num">${fmt(v, 2)} kW</span></div>`).join('');
     tip.style.opacity = 1;
     tip.style.left = `${X(best[0]) / W * box.width}px`;
-    tip.style.top = `${Y(best[1]) / H * box.height - 12}px`;
+    tip.style.top = `${Y(Math.max(best[1], best[2])) / H * box.height - 12}px`;
   };
   hit.addEventListener('mousemove', move);
   hit.addEventListener('touchmove', e => { move(e.touches[0]); e.preventDefault(); }, { passive: false });
   const hide = () => { tip.style.opacity = 0; hair.setAttribute('opacity', 0); dots.forEach(d => d.setAttribute('opacity', 0)); };
   hit.addEventListener('mouseleave', hide);
 
+  if (firstRender) {
+    svg.classList.add('reveal');
+    svg.addEventListener('animationend', () => svg.classList.remove('reveal'), { once: true });
+  }
+
   // table twin
-  buildTable($('intraday-table'),
+  buildTable($('hero-table'),
     ['Time', 'Production (kW)', 'Consumption (kW)', 'Net grid (kW)'],
     rows.slice().reverse().map(r => [
-      new Date(r[0] * 1000).toLocaleString(),
+      new Date(r[0] * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
       fmt(r[1], 2), fmt(r[2], 2), fmt(r[3], 2)
     ]));
+
+  // scale ceilings for the readout meters
+  const peak = Math.max(1, ...all.map(r => r[1]));
+  const loadPeak = Math.max(1, ...all.map(r => r[2]));
+  renderReadouts(live, peak, loadPeak);
 }
 
-/* ---------- monthly grouped bars --------------------------------------- */
+/* ---------- readouts ---------------------------------------------------- */
+function renderReadouts(live, peak, loadPeak) {
+  const box = $('readouts');
+  clear(box);
+  const c = live.current || {};
+  const t = live.today || {};
+  const PROD = css('--prod'), CONS = css('--cons');
+
+  const tile = (label, key, kw, foot, meter) => {
+    const d = document.createElement('div');
+    d.className = 'tile';
+    d.innerHTML =
+      `<div class="label"><span class="key" style="background:${key}"></span>${label}</div>` +
+      `<div class="value">${fmt(kw, 2)}<span class="unit"> kW</span></div>` +
+      (meter ? `<div class="meter" style="background:color-mix(in srgb, ${meter.color} 18%, var(--surface-1))">` +
+        `<i style="width:${Math.min(100, meter.frac * 100).toFixed(1)}%;background:${meter.color}"></i></div>` : '') +
+      `<div class="foot">${foot}</div>`;
+    return d;
+  };
+
+  box.appendChild(tile('Producing', PROD, c.pv_kw ?? 0,
+    t.pv_kwh !== undefined ? `<b>${fmt(t.pv_kwh)} kWh</b> so far today` : '',
+    { color: PROD, frac: (c.pv_kw ?? 0) / peak }));
+  box.appendChild(tile('Using', CONS, c.consumption_kw ?? 0,
+    t.consumption_kwh !== undefined ? `<b>${fmt(t.consumption_kwh)} kWh</b> so far today` : '',
+    { color: CONS, frac: (c.consumption_kw ?? 0) / loadPeak }));
+
+  const net = c.net_kw ?? 0;
+  const exporting = net < 0;
+  const dirColor = exporting ? css('--exp') : css('--imp');
+  box.appendChild(tile(exporting ? 'Exporting' : 'Importing', dirColor, Math.abs(net),
+    t.net_kwh !== undefined
+      ? `<b>${fmt(Math.abs(t.net_kwh))} kWh</b> ${t.net_kwh < 0 ? 'sold' : 'bought'} today`
+      : '',
+    null));
+}
+
+/* ---------- filmstrip: last 14 days ------------------------------------- */
+function renderStrip(intraday, history, live) {
+  const box = $('strip');
+  clear(box);
+  const rows = intraday.rows || [];
+  if (!rows.length) return;
+
+  const byDay = new Map();
+  for (const r of rows) {
+    const k = dayKey(r[0]);
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k).push(r);
+  }
+  // The last 14 calendar days ending today, so a collection outage shows as
+  // an honest empty frame instead of silently compressing the strip.
+  const last = new Date(rows[rows.length - 1][0] * 1000);
+  last.setHours(0, 0, 0, 0);
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(last);
+    d.setDate(d.getDate() - i);
+    days.push(d);
+  }
+  const todayStr = dayKey(last.getTime() / 1000 + 43200);
+  const ymax = Math.max(0.5, ...rows.map(r => r[1]));
+  // Totals only for sound ~24h days; a partial or catch-up row's lump total
+  // would masquerade as a single day's production.
+  const totals = new Map((history.days || [])
+    .filter(d => d.hours !== null && d.hours !== undefined && d.hours >= 23 && d.hours <= 25)
+    .map(d => [d.date, d.pv_kwh]));
+  if (live.today) totals.set(live.today.date, live.today.pv_kwh);
+
+  const PROD = css('--prod');
+  for (const d0 of days) {
+    const day = dayKey(d0.getTime() / 1000 + 43200);
+    const samples = byDay.get(day);
+    const t0 = d0.getTime() / 1000;
+    const W = 60, H = 40;
+    const X = t => (t - t0) / 86400 * W;
+    const Y = v => 2 + (1 - v / ymax) * (H - 4);
+
+    const cell = document.createElement('div');
+    cell.className = 'day' + (day === todayStr ? ' today' : '');
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, 'aria-label': `production on ${day}` });
+    svg.appendChild(el('line', { x1: 0, x2: W, y1: H - 2, y2: H - 2, stroke: css('--grid'), 'stroke-width': 1 }));
+    if (samples) {
+      const pts = samples.map((r, i) => `${i ? 'L' : 'M'} ${X(r[0]).toFixed(1)} ${Y(r[1]).toFixed(1)}`).join(' ');
+      const lastX = X(samples[samples.length - 1][0]).toFixed(1);
+      svg.appendChild(el('path', {
+        d: `${pts} L ${lastX} ${H - 2} L ${X(samples[0][0]).toFixed(1)} ${H - 2} Z`,
+        fill: PROD, 'fill-opacity': 0.14 }));
+      svg.appendChild(el('path', { d: pts, fill: 'none', stroke: PROD, 'stroke-width': 1.5,
+        'stroke-linejoin': 'round' }));
+    }
+    cell.appendChild(svg);
+
+    const lab = document.createElement('div');
+    lab.className = 'd';
+    lab.textContent = d0.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2)
+      + ' ' + d0.getDate();
+    cell.appendChild(lab);
+    const val = document.createElement('div');
+    val.className = 'v';
+    const kwh = totals.get(day);
+    val.textContent = kwh === undefined ? '—' : fmt(kwh, kwh >= 100 ? 0 : 1);
+    cell.appendChild(val);
+    cell.title = samples
+      ? `${day} · ${kwh === undefined ? '—' : fmt(kwh, 1)} kWh produced`
+      : `${day} · no samples (collection was down)`;
+    box.appendChild(cell);
+  }
+}
+
+/* ---------- monthly grouped bars ---------------------------------------- */
 function renderMonthly(history) {
   const svg = $('monthly');
   clear(svg);
   const months = history.months || [];
-  const W = 1000, H = 260, padL = 52, padR = 14, padT = 12, padB = 34;
-
-  const series = [
-    { name: 'Production', color: css('--series-1'), get: m => m.pv_kwh },
-    { name: 'Consumption', color: css('--series-2'), get: m => m.consumption_kwh },
-  ];
-  const legend = $('monthly-legend');
-  clear(legend);
-  for (const s of series) {
-    const item = document.createElement('span');
-    item.className = 'item';
-    item.innerHTML = `<span class="swatch" style="background:${s.color}"></span>${s.name}`;
-    legend.appendChild(item);
-  }
+  const PROD = css('--prod'), CONS = css('--cons');
+  legendInto('monthly-legend', [['Production', PROD], ['Consumption', CONS]]);
   if (!months.length) return;
 
-  const hi = Math.max(...months.flatMap(m => [m.pv_kwh, m.consumption_kwh])) * 1.08 || 1;
+  const W = 520, H = 240, padL = 44, padR = 8, padT = 12, padB = 30;
+  const hi = Math.max(...months.flatMap(m => [m.pv_kwh, m.consumption_kwh])) * 1.06 || 1;
   const Y = v => padT + (1 - v / hi) * (H - padT - padB);
   const bandW = (W - padL - padR) / months.length;
-  const barW = Math.max(4, (bandW - 12) / 2 - 1);   // 2px surface gap between adjacent bars
+  const barW = Math.min(24, Math.max(4, (bandW - 10) / 2 - 1));
 
   const step = niceStep(hi / 4);
   for (let v = 0; v <= hi; v += step) {
     svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
       stroke: v === 0 ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
-    const t = el('text', { x: padL - 8, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--text-muted') });
-    t.textContent = Math.round(v);
-    svg.appendChild(t);
+    text(svg, padL - 7, Y(v) + 3.5, String(Math.round(v)), { 'text-anchor': 'end' });
   }
-  const yl = el('text', { x: padL - 8, y: padT - 2, 'text-anchor': 'end', 'font-size': 10, fill: css('--text-muted') });
-  yl.textContent = 'kWh';
-  svg.appendChild(yl);
+  text(svg, padL - 7, padT - 3, 'kWh', { 'text-anchor': 'end' });
 
   const tip = $('monthly-tip');
+  const series = [
+    { name: 'Production', color: PROD, get: m => m.pv_kwh },
+    { name: 'Consumption', color: CONS, get: m => m.consumption_kwh },
+  ];
   months.forEach((m, i) => {
     const cx = padL + bandW * i + bandW / 2;
     series.forEach((s, j) => {
       const v = s.get(m);
-      const x = cx - barW - 1 + j * (barW + 2);
-      const y = Y(v);
-      const r = el('rect', { x, y, width: barW, height: Math.max(1, H - padB - y),
-        fill: s.color, rx: 4, ry: 4 });
-      r.addEventListener('mouseenter', ev => {
+      const x = cx - barW - 1 + j * (barW + 2);   // 2px surface gap between the pair
+      const h = Math.max(1, H - padB - Y(v));
+      const r = el('path', { d: barPath(x, H - padB, barW, h, 1), fill: s.color });
+      r.addEventListener('mouseenter', () => {
         const box = svg.getBoundingClientRect();
-        tip.innerHTML = `<b>${m.month}</b>`
+        tip.innerHTML = `<b>${monthName(m.month)}</b>`
           + series.map(ss => `<div class="row"><span class="sw" style="background:${ss.color}"></span>${ss.name}<span class="num">${fmt(ss.get(m), 0)} kWh</span></div>`).join('')
-          + `<div class="row">Days<span class="num">${m.days}</span></div>`;
+          + `<div class="row">days<span class="num">${m.days}</span></div>`;
         tip.style.opacity = 1;
         tip.style.left = `${cx / W * box.width}px`;
         tip.style.top = `${Y(Math.max(m.pv_kwh, m.consumption_kwh)) / H * box.height - 8}px`;
@@ -656,85 +895,83 @@ function renderMonthly(history) {
       r.addEventListener('mouseleave', () => tip.style.opacity = 0);
       svg.appendChild(r);
     });
-    const t = el('text', { x: cx, y: H - padB + 16, 'text-anchor': 'middle', 'font-size': 10.5, fill: css('--text-muted') });
-    t.textContent = m.month.slice(2);
-    svg.appendChild(t);
+    text(svg, cx, H - padB + 15, monthTick(m.month, i, months), { 'text-anchor': 'middle' });
   });
 
   buildTable($('monthly-table'),
     ['Month', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Days'],
-    months.slice().reverse().map(m => [m.month, fmt(m.pv_kwh, 0), fmt(m.consumption_kwh, 0), fmt(m.net_kwh, 0), m.days]));
+    months.slice().reverse().map(m => [m.month, fmt(m.pv_kwh, 0), fmt(m.consumption_kwh, 0),
+      { v: fmt(m.net_kwh, 0), cls: m.net_kwh < 0 ? 'exp' : '' }, m.days]));
 }
 
-/* ---------- monthly net grid: diverging bars --------------------------- */
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const monthName = ym => `${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`;
+function monthTick(ym, i, months) {
+  const name = MONTHS[+ym.slice(5) - 1];
+  const first = i === 0 || ym.slice(0, 4) !== months[i - 1].month.slice(0, 4);
+  return first ? `${name} ${ym.slice(2, 4)}` : name;
+}
+
+/* ---------- net grid: diverging bars ------------------------------------ */
 function renderNetGrid(history) {
   const svg = $('netgrid');
   clear(svg);
   const months = history.months || [];
   if (!months.length) return;
-  const W = 1000, H = 220, padL = 52, padR = 14, padT = 14, padB = 34;
+  const W = 520, H = 240, padL = 44, padR = 8, padT = 14, padB = 30;
 
+  const IMP = css('--imp'), EXP = css('--exp');
   const vals = months.map(m => m.net_kwh);
   const hi = Math.max(...vals, 0), lo = Math.min(...vals, 0);
   const span = (hi - lo) || 1;
   const Y = v => padT + (1 - (v - lo) / span) * (H - padT - padB);
   const bandW = (W - padL - padR) / months.length;
-  const barW = Math.max(6, bandW - 14);
+  const barW = Math.min(24, Math.max(6, bandW - 12));
 
   const step = niceStep(span / 4);
-  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) {
     svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
       stroke: Math.abs(v) < 1e-9 ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
-    const t = el('text', { x: padL - 8, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--text-muted') });
-    t.textContent = Math.round(v);
-    svg.appendChild(t);
+    text(svg, padL - 7, Y(v) + 3.5, String(Math.round(v)), { 'text-anchor': 'end' });
   }
-  const yl = el('text', { x: padL - 8, y: padT - 2, 'text-anchor': 'end', 'font-size': 10, fill: css('--text-muted') });
-  yl.textContent = 'kWh';
-  svg.appendChild(yl);
+  text(svg, padL - 7, padT - 3, 'kWh', { 'text-anchor': 'end' });
 
   const tip = $('netgrid-tip');
   const zero = Y(0);
   months.forEach((m, i) => {
     const v = m.net_kwh;
     const cx = padL + bandW * i + bandW / 2;
-    const y = v >= 0 ? Y(v) : zero;
     const h = Math.max(1, Math.abs(Y(v) - zero));
-    const color = v >= 0 ? css('--diverge-pos') : css('--diverge-neg');
-    const r = el('rect', { x: cx - barW / 2, y, width: barW, height: h, fill: color, rx: 4, ry: 4 });
+    const color = v >= 0 ? IMP : EXP;
+    const r = el('path', { d: barPath(cx - barW / 2, zero, barW, h, v >= 0 ? 1 : -1), fill: color });
     r.addEventListener('mouseenter', () => {
       const box = svg.getBoundingClientRect();
-      tip.innerHTML = `<b>${m.month}</b><div class="row">${v >= 0 ? 'Imported' : 'Exported'}<span class="num">${fmt(Math.abs(v), 0)} kWh</span></div>`;
+      tip.innerHTML = `<b>${monthName(m.month)}</b><div class="row"><span class="sw" style="background:${color}"></span>${v >= 0 ? 'bought' : 'sold'}<span class="num">${fmt(Math.abs(v), 0)} kWh</span></div>`;
       tip.style.opacity = 1;
       tip.style.left = `${cx / W * box.width}px`;
-      tip.style.top = `${Math.min(y, zero) / H * box.height - 8}px`;
+      tip.style.top = `${(v >= 0 ? Y(v) : zero) / H * box.height - 8}px`;
     });
     r.addEventListener('mouseleave', () => tip.style.opacity = 0);
     svg.appendChild(r);
-    const t = el('text', { x: cx, y: H - padB + 16, 'text-anchor': 'middle', 'font-size': 10.5, fill: css('--text-muted') });
-    t.textContent = m.month.slice(2);
-    svg.appendChild(t);
+    text(svg, cx, H - padB + 15, monthTick(m.month, i, months), { 'text-anchor': 'middle' });
   });
 }
 
-function niceStep(raw) {
-  const p = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-9))));
-  const n = raw / p;
-  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
-}
-
-/* ---------- inverters: sequential ramp over a grid ---------------------- */
-function renderInverters(live) {
-  const box = $('inverters');
+/* ---------- the array ---------------------------------------------------
+   Each microinverter drawn as the panel it sits under, shaded on a
+   single-hue amber ramp by today's production.                            */
+function renderArray(live) {
+  const box = $('array');
   clear(box);
   const list = live.inverters || [];
-  $('inv-sub').textContent = `${list.length} reporting — shaded by today's production`;
+  $('array-sub').textContent =
+    `${list.length} microinverters, sorted by serial · shaded by today's production`;
 
-  const ramp = ['--seq-100', '--seq-250', '--seq-400', '--seq-550', '--seq-700'].map(css);
-  const vals = list.map(i => i.today_kwh).filter(v => v !== null && v !== undefined);
-  const max = Math.max(...vals, 0.001);
-
-  const rampBox = $('inv-ramp');
+  /* The light half of the amber ramp only: a healthy near-uniform array reads
+     as a wall of gold, not a wall of brown, and dark ink clears contrast on
+     every step. A laggard drops visibly toward pale. */
+  const ramp = ['--amber-100', '--amber-250', '--amber-400'].map(css);
+  const rampBox = $('array-ramp');
   clear(rampBox);
   for (const c of ramp) {
     const i = document.createElement('i');
@@ -742,22 +979,24 @@ function renderInverters(live) {
     rampBox.appendChild(i);
   }
 
+  const vals = list.map(i => i.today_kwh).filter(v => v !== null && v !== undefined);
+  const max = Math.max(...vals, 0.001);
+
   for (const inv of list) {
     const cell = document.createElement('div');
-    cell.className = 'inv';
+    cell.className = 'panel';
     const v = inv.today_kwh;
     if (v !== null && v !== undefined) {
       const idx = Math.min(ramp.length - 1, Math.floor(v / max * ramp.length));
       cell.style.background = ramp[idx];
-      // Dark ramp steps need light ink; the two darkest steps are below the text.
-      if (idx >= 3) cell.style.color = '#fff';
+      cell.style.color = '#0b0b0b';
     }
     const low = inv.pct_of_avg !== undefined && inv.pct_of_avg < 80;
     cell.innerHTML =
       `<div class="sn">…${inv.serial.slice(-6)}</div>` +
-      `<div class="kwh">${fmt(v, 1)}<span style="font-size:10px;font-weight:500"> kWh</span></div>` +
+      `<div class="kwh">${fmt(v, 1)}<span class="u"> kWh</span></div>` +
       `<div class="state"><span class="dot" style="background:${low ? css('--warning') : css('--good')}"></span>` +
-      `${low ? `${inv.pct_of_avg}% of avg` : inv.state}</div>`;
+      `${low ? `${inv.pct_of_avg}% of avg` : (inv.state || 'ok').toLowerCase()}</div>`;
     cell.title = `${inv.serial}\n${fmt(inv.kw, 3)} kW now\n${fmt(v, 2)} kWh today\n${fmt(inv.lifetime_kwh, 0)} kWh lifetime`
       + (inv.pct_of_avg !== undefined ? `\n${inv.pct_of_avg}% of array average` : '');
     box.appendChild(cell);
@@ -771,8 +1010,8 @@ function renderAlerts(live) {
   const alerts = live.alerts || [];
   if (!alerts.length) {
     const li = document.createElement('li');
-    li.className = 'lv-info';
-    li.innerHTML = `<span class="ico">✓</span><span>Nothing to report.</span>`;
+    li.className = 'lv-ok';
+    li.innerHTML = `<span class="ico">✓</span><span class="txt">All clear — nothing to report.</span>`;
     box.appendChild(li);
     return;
   }
@@ -780,7 +1019,7 @@ function renderAlerts(live) {
     const li = document.createElement('li');
     li.className = `lv-${a.level}`;
     const ico = a.level === 'error' ? '✕' : a.level === 'warn' ? '!' : 'i';
-    li.innerHTML = `<span class="ico">${ico}</span><span></span>`;
+    li.innerHTML = `<span class="ico">${ico}</span><span class="txt"></span>`;
     li.lastChild.textContent = a.text;
     box.appendChild(li);
   }
@@ -798,12 +1037,12 @@ function renderMeters(live) {
       `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
     return d;
   };
-  box.appendChild(block('Production meter', [
+  box.appendChild(block('Production', [
     ['Serial', m.production.serial],
     ['Now', `${fmt(m.production.kw, 3)} kW`],
     ['Lifetime', `${fmt(m.production.lifetime_net_kwh, 0)} kWh`],
   ]));
-  box.appendChild(block('Consumption meter', [
+  box.appendChild(block('Consumption', [
     ['Serial', m.consumption.serial],
     ['Now', `${fmt(m.consumption.kw, 3)} kW`],
     ['Lifetime net', `${fmt(m.consumption.lifetime_net_kwh, 0)} kWh`],
@@ -818,12 +1057,12 @@ function renderMeters(live) {
 
 function renderHistory(history) {
   const days = (history.days || []).slice().reverse();
-  $('history-sub').textContent = `${days.length} days`;
+  $('history-sub').textContent = `${days.length} days on record — green means the grid owed you`;
   buildTable($('history'),
     ['Date', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Inverters', 'Hours', 'Alerts'],
     days.map(d => [
       d.date, fmt(d.pv_kwh, 2), fmt(d.consumption_kwh, 2),
-      { v: fmt(d.net_kwh, 2), cls: d.net_kwh < 0 ? 'neg' : '' },
+      { v: fmt(d.net_kwh, 2), cls: d.net_kwh < 0 ? 'exp' : '' },
       d.inverters, d.hours === null || d.hours === undefined ? '—' : fmt(d.hours, 1),
       { v: d.alerts || '', cls: 'alert' },
     ]), true);
@@ -834,11 +1073,13 @@ function buildTable(host, headers, rows, sortable = false) {
   const table = document.createElement('table');
   const thead = document.createElement('thead');
   const htr = document.createElement('tr');
+  const cellValue = c => (c && typeof c === 'object') ? c.v : c;
   headers.forEach((h, i) => {
     const th = document.createElement('th');
     th.textContent = h;
     if (sortable) {
-      th.addEventListener('click', () => {
+      th.tabIndex = 0;
+      const sort = () => {
         const dir = th.dataset.dir === 'asc' ? -1 : 1;
         htr.querySelectorAll('th').forEach(x => delete x.dataset.dir);
         th.dataset.dir = dir === 1 ? 'asc' : 'desc';
@@ -849,7 +1090,9 @@ function buildTable(host, headers, rows, sortable = false) {
           return String(av).localeCompare(String(bv)) * dir;
         });
         fill();
-      });
+      };
+      th.addEventListener('click', sort);
+      th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); } });
     }
     htr.appendChild(th);
   });
@@ -858,7 +1101,6 @@ function buildTable(host, headers, rows, sortable = false) {
   const tbody = document.createElement('tbody');
   table.appendChild(tbody);
 
-  const cellValue = c => (c && typeof c === 'object') ? c.v : c;
   function fill() {
     clear(tbody);
     for (const r of rows) {
@@ -895,21 +1137,23 @@ async function load(initial = false) {
 function renderAll() {
   const live = DATA.live || {};
   $('updated').textContent = live.latest_sample
-    ? `last reading ${new Date(live.latest_sample.replace(' ', 'T')).toLocaleString()}`
+    ? `read ${new Date(live.latest_sample.replace(' ', 'T')).toLocaleString(undefined,
+        { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
     : '';
   const pill = $('status');
   pill.className = `pill ${live.status === 'ok' ? 'ok' : 'stale'}`;
   $('status-text').textContent = live.status === 'ok'
-    ? 'live' : `stale (${fmt((live.age_minutes || 0) / 60, 1)} h)`;
+    ? 'live' : `stale ${fmt((live.age_minutes || 0) / 60, 1)}h`;
 
-  renderKpis(live);
-  renderIntraday(DATA.intraday || { rows: [] });
+  renderHero(DATA.intraday || { rows: [] }, live);
+  renderStrip(DATA.intraday || { rows: [] }, DATA.history || {}, live);
   renderMonthly(DATA.history || { months: [] });
   renderNetGrid(DATA.history || { months: [] });
-  renderInverters(live);
+  renderArray(live);
   renderAlerts(live);
   renderMeters(live);
   renderHistory(DATA.history || { days: [] });
+  firstRender = false;
 }
 
 function fail(msg) {
@@ -923,9 +1167,8 @@ async function start() {
   const material = readKeyMaterial();
   if (!material) {
     $('gate-msg').innerHTML =
-      'This page needs a decryption key. Open it with the full bookmarked link, '
-      + 'which ends in <code>#k=…</code> — the key is stored on this device afterwards '
-      + 'and never sent to any server.';
+      'This page needs its decryption key. Open the full bookmarked link — the one ending '
+      + 'in <code>#k=…</code>. The key is kept on this device and never sent anywhere.';
     return;
   }
   try {
@@ -937,8 +1180,7 @@ async function start() {
   }
 
   try {
-    const live = await fetchAndDecrypt('live');
-    DATA.live = live;
+    DATA.live = await fetchAndDecrypt('live');
   } catch (e) {
     localStorage.removeItem(KEY_STORAGE);
     $('gate-msg').textContent =
@@ -967,7 +1209,8 @@ $('theme-btn').addEventListener('click', () => {
   const root = document.documentElement;
   const now = root.getAttribute('data-theme');
   const next = now === 'dark' ? 'light' : now === 'light' ? '' : 'dark';
-  if (next) root.setAttribute('data-theme', next); else root.removeAttribute('data-theme');
+  if (next) { root.setAttribute('data-theme', next); localStorage.setItem('solar-theme', next); }
+  else { root.removeAttribute('data-theme'); localStorage.removeItem('solar-theme'); }
   if (DATA.live) renderAll();   // re-read CSS vars into the SVG marks
 });
 
