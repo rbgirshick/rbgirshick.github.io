@@ -1063,11 +1063,17 @@ function renderArray(live) {
       cell.style.color = '#0b0b0b';
     }
     const low = inv.pct_of_avg !== undefined && inv.pct_of_avg < 80;
+    const working = (inv.state || '').toLowerCase() === 'working';
+    // The big number is the day's energy; the status line carries the live
+    // watts so cumulative and instantaneous never get mistaken for each other.
+    const stateText = !working ? (inv.state || 'ok').toLowerCase()
+      : low ? `${inv.pct_of_avg}% of avg`
+      : `${Math.round((inv.kw || 0) * 1000)} W now`;
     cell.innerHTML =
       `<div class="sn">…${inv.serial.slice(-6)}</div>` +
-      `<div class="kwh">${fmt(v, 1)}<span class="u"> kWh</span></div>` +
+      `<div class="kwh">${fmt(v, 1)}<span class="u"> kWh today</span></div>` +
       `<div class="state"><span class="dot" style="background:${low ? css('--warning') : css('--good')}"></span>` +
-      `${low ? `${inv.pct_of_avg}% of avg` : (inv.state || 'ok').toLowerCase()}</div>`;
+      `${stateText}</div>`;
     cell.title = `${inv.serial}\n${fmt(inv.kw, 3)} kW now\n${fmt(v, 2)} kWh today\n${fmt(inv.lifetime_kwh, 0)} kWh lifetime`
       + (inv.pct_of_avg !== undefined ? `\n${inv.pct_of_avg}% of array average` : '');
     return cell;
