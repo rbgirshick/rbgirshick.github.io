@@ -239,9 +239,12 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
   margin-top: 4px;
 }
 .tile .value .unit { font-size: 15px; font-weight: 400; color: var(--text-secondary); letter-spacing: 0; }
-.tile .meter { height: 4px; border-radius: 2px; margin-top: 9px; overflow: hidden; }
+.tile { display: flex; flex-direction: column; }
+.tile .meter { height: 4px; border-radius: 2px; margin-top: 9px; overflow: hidden; align-self: stretch; }
 .tile .meter i { display: block; height: 100%; border-radius: 2px; }
-.tile .foot { font-size: 12px; color: var(--text-muted); margin-top: 7px; }
+/* margin-top:auto pins every tile's foot to the same baseline, with or
+   without a meter bar above it */
+.tile .foot { font-size: 12px; color: var(--text-muted); margin-top: auto; padding-top: 7px; }
 .tile .foot b { font-weight: 500; color: var(--text-secondary); }
 
 /* --- charts ------------------------------------------------------------ */
