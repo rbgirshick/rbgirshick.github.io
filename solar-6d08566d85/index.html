@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Solar</title>
+<style>
+/* Palette: the dataviz reference instance, values unchanged.
+   Categorical slots 1-3 only (blue/orange/aqua) - that subset is documented as
+   clearing the all-pairs CVD gate in both modes. Nothing here is a generated hue. */
+.viz-root {
+  color-scheme: light;
+  --surface-1:      #fcfcfb;
+  --page:           #f9f9f7;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --grid:           #e1e0d9;
+  --axis:           #c3c2b7;
+  --border:         rgba(11,11,11,0.10);
+  --series-1:       #2a78d6;  /* production */
+  --series-2:       #eb6834;  /* consumption */
+  --series-3:       #1baf7a;  /* net grid */
+  --diverge-pos:    #2a78d6;  /* import */
+  --diverge-neg:    #d03b3b;  /* export */
+  --diverge-mid:    #f0efec;
+  --seq-100:        #cde2fb;
+  --seq-250:        #86b6ef;
+  --seq-400:        #3987e5;
+  --seq-550:        #1c5cab;
+  --seq-700:        #0d366b;
+  --good:           #0ca30c;
+  --warning:        #fab219;
+  --serious:        #ec835a;
+  --critical:       #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page:           #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --axis:           #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --series-2:       #d95926;
+    --series-3:       #199e70;
+    --diverge-pos:    #3987e5;
+    --diverge-neg:    #d03b3b;
+    --diverge-mid:    #383835;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --surface-1:      #1a1a19;
+  --page:           #0d0d0d;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #898781;
+  --grid:           #2c2c2a;
+  --axis:           #383835;
+  --border:         rgba(255,255,255,0.10);
+  --series-1:       #3987e5;
+  --series-2:       #d95926;
+  --series-3:       #199e70;
+  --diverge-pos:    #3987e5;
+  --diverge-neg:    #d03b3b;
+  --diverge-mid:    #383835;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--page, #f9f9f7);
+  color: var(--text-primary, #0b0b0b);
+}
+.viz-root {
+  background: var(--page);
+  color: var(--text-primary);
+  min-height: 100vh;
+  padding: 20px 16px 56px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* --- header ------------------------------------------------------------ */
+header.top {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px;
+  margin-bottom: 20px;
+}
+header.top h1 {
+  font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em;
+}
+.meta { color: var(--text-secondary); font-size: 13px; }
+.spacer { flex: 1 1 auto; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+.pill.ok    .dot { background: var(--good); }
+.pill.stale .dot { background: var(--critical); }
+button.ghost {
+  font: inherit; font-size: 12px; color: var(--text-secondary);
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
+
+/* --- cards ------------------------------------------------------------- */
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px 18px;
+  margin-bottom: 16px;
+}
+.card > h2 {
+  font-size: 13px; font-weight: 600; margin: 0 0 2px;
+  color: var(--text-primary); letter-spacing: 0.01em;
+}
+.card > .sub { font-size: 12px; color: var(--text-muted); margin: 0 0 14px; }
+
+/* --- KPI dials --------------------------------------------------------- */
+.kpi-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px; margin-bottom: 16px;
+}
+.dial { text-align: center; }
+.dial svg { display: block; margin: 0 auto; overflow: visible; }
+.dial .label {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+.dial .value {
+  font-size: 40px; font-weight: 600; line-height: 1.05; letter-spacing: -0.02em;
+  /* proportional figures: this is a standalone display number */
+}
+.dial .unit { font-size: 15px; font-weight: 500; color: var(--text-secondary); }
+.dial .foot { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+/* --- charts ------------------------------------------------------------ */
+.chart-wrap { position: relative; overflow-x: auto; }
+svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
+.legend {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 10px;
+  font-size: 12px; color: var(--text-secondary);
+}
+.legend span.item { display: inline-flex; align-items: center; gap: 6px; }
+.legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+.tooltip {
+  position: absolute; pointer-events: none; opacity: 0;
+  transform: translate(-50%, -100%);
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; line-height: 1.5;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.14); white-space: nowrap; z-index: 20;
+  transition: opacity .1s;
+}
+.tooltip b { font-weight: 600; }
+.tooltip .row { display: flex; align-items: center; gap: 6px; }
+.tooltip .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.tooltip .num { margin-left: auto; padding-left: 14px; font-variant-numeric: tabular-nums; }
+
+/* --- inverter grid ----------------------------------------------------- */
+.inv-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px;
+}
+.inv {
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 9px;
+  font-size: 11px; cursor: default; position: relative;
+}
+.inv .sn { color: var(--text-muted); font-size: 10px; letter-spacing: .01em; }
+.inv .kwh { font-size: 17px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.inv .state { display: flex; align-items: center; gap: 5px; margin-top: 3px; color: var(--text-secondary); }
+.inv .state .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.scale-legend { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); margin-top: 12px; }
+.scale-legend .ramp { display: flex; }
+.scale-legend .ramp i { width: 22px; height: 9px; display: block; }
+
+/* --- tables ------------------------------------------------------------ */
+.table-wrap { overflow-x: auto; max-height: 460px; overflow-y: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: right; padding: 6px 10px; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th {
+  position: sticky; top: 0; background: var(--surface-1); z-index: 1;
+  font-weight: 600; color: var(--text-secondary); font-size: 11.5px;
+  border-bottom: 1px solid var(--axis); cursor: pointer; user-select: none;
+}
+th:hover { color: var(--text-primary); }
+td { border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+tbody tr:hover td { background: var(--page); }
+td.alert { text-align: left; white-space: normal; color: var(--text-secondary); font-size: 11.5px; max-width: 340px; }
+.neg { color: var(--diverge-neg); }
+
+/* --- alerts ------------------------------------------------------------ */
+.alert-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.alert-list li { display: flex; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--grid); align-items: flex-start; }
+.alert-list li:last-child { border-bottom: 0; }
+.alert-list .ico { flex: none; font-size: 13px; line-height: 1.45; }
+.alert-list .lv-info .ico { color: var(--text-muted); }
+.alert-list .lv-warn .ico { color: var(--warning); }
+.alert-list .lv-error .ico { color: var(--critical); }
+
+/* --- meters ------------------------------------------------------------ */
+.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 26px; font-size: 12.5px; }
+.meters dl { margin: 0; }
+.meters .mt { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.meters .kv { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--grid); }
+.meters .kv:last-child { border-bottom: 0; }
+.meters .kv .k { color: var(--text-muted); }
+.meters .kv .v { font-variant-numeric: tabular-nums; }
+
+/* --- gate / errors ----------------------------------------------------- */
+.gate { max-width: 560px; margin: 60px auto; text-align: left; }
+.gate h1 { font-size: 18px; margin: 0 0 10px; }
+.gate p { color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
+.gate code {
+  background: var(--surface-1); border: 1px solid var(--border);
+  padding: 2px 6px; border-radius: 4px; font-size: 12.5px; word-break: break-all;
+}
+.hidden { display: none !important; }
+.toggle-table {
+  font: inherit; font-size: 11.5px; color: var(--text-secondary);
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 9px; cursor: pointer; margin-left: auto;
+}
+.card-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.card-head h2 { margin: 0; }
+.card-head .sub { margin: 0; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+
+  <div id="gate" class="gate">
+    <h1>Solar dashboard</h1>
+    <p id="gate-msg">Decrypting…</p>
+  </div>
+
+  <div id="app" class="hidden">
+    <header class="top">
+      <h1>Solar</h1>
+      <span class="meta" id="updated"></span>
+      <span class="spacer"></span>
+      <span class="pill ok" id="status"><span class="dot"></span><span id="status-text">live</span></span>
+      <button class="ghost" id="theme-btn" type="button">Theme</button>
+      <button class="ghost" id="forget-btn" type="button" title="Remove the stored decryption key from this browser">Forget key</button>
+    </header>
+
+    <div class="kpi-row" id="kpis"></div>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Today</h2>
+        <p class="sub" id="intraday-sub"></p>
+        <button class="toggle-table" data-toggle="intraday-table">Table</button>
+      </div>
+      <div class="legend" id="intraday-legend"></div>
+      <div class="chart-wrap">
+        <svg class="chart" id="intraday" viewBox="0 0 1000 300" role="img" aria-label="Power over time"></svg>
+        <div class="tooltip" id="intraday-tip"></div>
+      </div>
+      <div class="table-wrap hidden" id="intraday-table"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Monthly energy</h2>
+        <p class="sub">Complete days only — partial and catch-up rows are excluded.</p>
+        <button class="toggle-table" data-toggle="monthly-table">Table</button>
+      </div>
+      <div class="legend" id="monthly-legend"></div>
+      <div class="chart-wrap">
+        <svg class="chart" id="monthly" viewBox="0 0 1000 260" role="img" aria-label="Monthly production and consumption"></svg>
+        <div class="tooltip" id="monthly-tip"></div>
+      </div>
+      <div class="table-wrap hidden" id="monthly-table"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Monthly net grid</h2>
+        <p class="sub">Above the line you imported; below it you exported.</p>
+      </div>
+      <div class="chart-wrap">
+        <svg class="chart" id="netgrid" viewBox="0 0 1000 220" role="img" aria-label="Monthly net grid"></svg>
+        <div class="tooltip" id="netgrid-tip"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Inverters</h2>
+        <p class="sub" id="inv-sub"></p>
+      </div>
+      <div class="inv-grid" id="inverters"></div>
+      <div class="scale-legend">
+        <span>Today, less</span>
+        <span class="ramp" id="inv-ramp"></span>
+        <span>more</span>
+      </div>
+    </section>
+
+    <section class="card" id="alerts-card">
+      <div class="card-head"><h2>Alerts</h2></div>
+      <ul class="alert-list" id="alerts"></ul>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Meters</h2>
+        <p class="sub">Resolved by serial number, never by device index.</p>
+      </div>
+      <div class="meters" id="meters"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Daily history</h2>
+        <p class="sub" id="history-sub"></p>
+      </div>
+      <div class="table-wrap" id="history"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const REPO = 'rbgirshick/pv-feed-a9074342';
+const BASE = `https://raw.githubusercontent.com/${REPO}/main`;
+const FILES = ['live', 'intraday', 'history', 'inverters'];
+const REFRESH_MS = 60000;
+const KEY_STORAGE = 'solar-dashboard-key';
+
+const $ = id => document.getElementById(id);
+const fmt = (n, d = 1) => (n === null || n === undefined || Number.isNaN(n)) ? '—' : n.toFixed(d);
+const css = name => getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(name).trim();
+
+let KEY = null;      // CryptoKey
+let DATA = {};       // decrypted payloads
+let timer = null;
+
+/* ---------- key handling ------------------------------------------------
+   The key arrives in the URL fragment, which browsers never send to a server.
+   We stash it in localStorage and strip it from the address bar so the key
+   does not sit in the visible URL, then reuse it on later visits - which is
+   what lets notification click-throughs (which deliberately carry no key)
+   still work.                                                              */
+function readKeyMaterial() {
+  const m = location.hash.match(/[#&]k=([A-Za-z0-9_\-=]+)/);
+  if (m) {
+    localStorage.setItem(KEY_STORAGE, m[1]);
+    history.replaceState(null, '', location.pathname + location.search);
+    return m[1];
+  }
+  return localStorage.getItem(KEY_STORAGE);
+}
+
+function b64urlToBytes(s) {
+  const pad = s.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(pad + '='.repeat((4 - pad.length % 4) % 4));
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+async function importKey(material) {
+  const raw = b64urlToBytes(material);
+  if (raw.length !== 32) throw new Error('key must be 32 bytes');
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
+}
+
+async function fetchAndDecrypt(name) {
+  const res = await fetch(`${BASE}/${name}.bin?t=${Date.now()}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
+  const blob = new Uint8Array(await res.arrayBuffer());
+  // Layout written by publish_dashboard.py: nonce(12) || ciphertext || tag(16).
+  const iv = blob.slice(0, 12);
+  const body = blob.slice(12);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, KEY, body);
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+/* ---------- svg helpers ------------------------------------------------ */
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs = {}) {
+  const n = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  return n;
+}
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+/* ---------- dials -------------------------------------------------------
+   These are METERS in polar form: a single value against a scale, on a
+   same-ramp track. Not a pie - there is one value and a track, never a set
+   of slices being compared.                                               */
+function dial(label, value, unit, max, color, foot, signed = false) {
+  const wrap = document.createElement('div');
+  wrap.className = 'card dial';
+
+  const W = 200, H = 104, cx = 100, cy = 96, r = 78;
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H });
+
+  const polar = (frac) => {
+    const a = Math.PI * (1 - Math.min(Math.max(frac, 0), 1));
+    return [cx + r * Math.cos(a), cy - r * Math.sin(a)];
+  };
+  const arc = (from, to) => {
+    const [x1, y1] = polar(from), [x2, y2] = polar(to);
+    return `M ${x1} ${y1} A ${r} ${r} 0 ${(to - from) > 0.5 ? 1 : 0} 1 ${x2} ${y2}`;
+  };
+
+  // track
+  svg.appendChild(el('path', {
+    d: arc(0, 1), fill: 'none', stroke: css('--grid'), 'stroke-width': 9, 'stroke-linecap': 'round'
+  }));
+
+  const frac = max > 0 ? Math.abs(value) / max : 0;
+  if (frac > 0.002) {
+    svg.appendChild(el('path', {
+      d: arc(0, Math.min(frac, 1)), fill: 'none', stroke: color,
+      'stroke-width': 9, 'stroke-linecap': 'round'
+    }));
+  }
+  // scale ends
+  const tick = (frac_, text) => {
+    const [x, y] = polar(frac_);
+    const t = el('text', {
+      x: x + (frac_ === 0 ? 2 : -2), y: y + 15,
+      'text-anchor': frac_ === 0 ? 'start' : 'end',
+      'font-size': 10, fill: css('--text-muted')
+    });
+    t.textContent = text;
+    svg.appendChild(t);
+  };
+  tick(0, '0');
+  tick(1, fmt(max, max >= 10 ? 0 : 1));
+
+  wrap.appendChild(Object.assign(document.createElement('div'), { className: 'label', textContent: label }));
+  wrap.appendChild(svg);
+
+  const v = document.createElement('div');
+  v.className = 'value';
+  v.style.color = color;
+  v.innerHTML = `${signed && value > 0 ? '+' : ''}${fmt(value, 2)}<span class="unit"> ${unit}</span>`;
+  wrap.appendChild(v);
+
+  wrap.appendChild(Object.assign(document.createElement('div'), { className: 'foot', textContent: foot }));
+  return wrap;
+}
+
+function renderKpis(live) {
+  const box = $('kpis');
+  clear(box);
+  const c = live.current || {};
+  const t = live.today || {};
+
+  // Scale the production dial to the observed system ceiling, rounded up.
+  const peak = Math.max(7, Math.ceil((DATA.intraday?.rows || []).reduce((m, r) => Math.max(m, r[1]), 0)));
+  const loadPeak = Math.max(5, Math.ceil((DATA.intraday?.rows || []).reduce((m, r) => Math.max(m, r[2]), 0)));
+
+  box.appendChild(dial('Producing now', c.pv_kw ?? 0, 'kW', peak, css('--series-1'),
+    t.pv_kwh !== undefined ? `${fmt(t.pv_kwh)} kWh today` : ''));
+  box.appendChild(dial('Using now', c.consumption_kw ?? 0, 'kW', loadPeak, css('--series-2'),
+    t.consumption_kwh !== undefined ? `${fmt(t.consumption_kwh)} kWh today` : ''));
+
+  const net = c.net_kw ?? 0;
+  const exporting = net < 0;
+  box.appendChild(dial(exporting ? 'Exporting now' : 'Importing now', Math.abs(net), 'kW',
+    Math.max(peak, loadPeak), exporting ? css('--diverge-neg') : css('--diverge-pos'),
+    t.net_kwh !== undefined
+      ? `${fmt(Math.abs(t.net_kwh))} kWh ${t.net_kwh < 0 ? 'exported' : 'imported'} today`
+      : ''));
+}
+
+/* ---------- intraday line chart ---------------------------------------- */
+function renderIntraday(intraday) {
+  const svg = $('intraday');
+  clear(svg);
+  const rows = intraday.rows || [];
+  const W = 1000, H = 300, padL = 46, padR = 14, padT = 12, padB = 28;
+
+  $('intraday-sub').textContent = rows.length
+    ? `${rows.length} samples over the last ${intraday.days} days`
+    : 'no recent samples';
+
+  const series = [
+    { key: 1, name: 'Production', color: css('--series-1') },
+    { key: 2, name: 'Consumption', color: css('--series-2') },
+    { key: 3, name: 'Net grid', color: css('--series-3') },
+  ];
+
+  const legend = $('intraday-legend');
+  clear(legend);
+  for (const s of series) {
+    const item = document.createElement('span');
+    item.className = 'item';
+    item.innerHTML = `<span class="swatch" style="background:${s.color}"></span>${s.name}`;
+    legend.appendChild(item);
+  }
+
+  if (!rows.length) return;
+
+  const xs = rows.map(r => r[0]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  let lo = 0, hi = 0;
+  for (const r of rows) for (const k of [1, 2, 3]) { lo = Math.min(lo, r[k]); hi = Math.max(hi, r[k]); }
+  hi = Math.ceil(hi) || 1; lo = Math.floor(lo);
+
+  const X = t => padL + (x1 === x0 ? 0 : (t - x0) / (x1 - x0)) * (W - padL - padR);
+  const Y = v => padT + (1 - (v - lo) / (hi - lo || 1)) * (H - padT - padB);
+
+  // gridlines + y ticks (hairline, solid, recessive)
+  const step = Math.max(1, Math.round((hi - lo) / 5));
+  for (let v = lo; v <= hi; v += step) {
+    svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
+      stroke: v === 0 ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
+    const t = el('text', { x: padL - 8, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--text-muted') });
+    t.textContent = v;
+    svg.appendChild(t);
+  }
+  const yl = el('text', { x: padL - 8, y: padT - 2, 'text-anchor': 'end', 'font-size': 10, fill: css('--text-muted') });
+  yl.textContent = 'kW';
+  svg.appendChild(yl);
+
+  // x ticks: one per day boundary
+  let lastDay = null;
+  for (const r of rows) {
+    const d = new Date(r[0] * 1000);
+    const key = d.toDateString();
+    if (key !== lastDay) {
+      lastDay = key;
+      const x = X(r[0]);
+      svg.appendChild(el('line', { x1: x, x2: x, y1: padT, y2: H - padB, stroke: css('--grid'), 'stroke-width': 1 }));
+      const t = el('text', { x: x + 4, y: H - padB + 16, 'font-size': 11, fill: css('--text-muted') });
+      t.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      svg.appendChild(t);
+    }
+  }
+
+  for (const s of series) {
+    const d = rows.map((r, i) => `${i ? 'L' : 'M'} ${X(r[0]).toFixed(1)} ${Y(r[s.key]).toFixed(1)}`).join(' ');
+    svg.appendChild(el('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2,
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  }
+
+  // crosshair + tooltip
+  const hair = el('line', { y1: padT, y2: H - padB, stroke: css('--axis'), 'stroke-width': 1, opacity: 0 });
+  svg.appendChild(hair);
+  const dots = series.map(s => {
+    const c = el('circle', { r: 4, fill: s.color, stroke: css('--surface-1'), 'stroke-width': 2, opacity: 0 });
+    svg.appendChild(c);
+    return c;
+  });
+  const tip = $('intraday-tip');
+  const hit = el('rect', { x: padL, y: padT, width: W - padL - padR, height: H - padT - padB,
+    fill: 'transparent', style: 'cursor:crosshair' });
+  svg.appendChild(hit);
+
+  const move = ev => {
+    const box = svg.getBoundingClientRect();
+    const px = (ev.clientX - box.left) / box.width * W;
+    const t = x0 + (px - padL) / (W - padL - padR) * (x1 - x0);
+    let best = rows[0], bd = Infinity;
+    for (const r of rows) { const d = Math.abs(r[0] - t); if (d < bd) { bd = d; best = r; } }
+    hair.setAttribute('x1', X(best[0])); hair.setAttribute('x2', X(best[0])); hair.setAttribute('opacity', 1);
+    series.forEach((s, i) => {
+      dots[i].setAttribute('cx', X(best[0])); dots[i].setAttribute('cy', Y(best[s.key]));
+      dots[i].setAttribute('opacity', 1);
+    });
+    const when = new Date(best[0] * 1000);
+    tip.innerHTML = `<b>${when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</b>`
+      + series.map(s => `<div class="row"><span class="sw" style="background:${s.color}"></span>${s.name}<span class="num">${fmt(best[s.key], 2)} kW</span></div>`).join('');
+    tip.style.opacity = 1;
+    tip.style.left = `${X(best[0]) / W * box.width}px`;
+    tip.style.top = `${Y(best[1]) / H * box.height - 12}px`;
+  };
+  hit.addEventListener('mousemove', move);
+  hit.addEventListener('touchmove', e => { move(e.touches[0]); e.preventDefault(); }, { passive: false });
+  const hide = () => { tip.style.opacity = 0; hair.setAttribute('opacity', 0); dots.forEach(d => d.setAttribute('opacity', 0)); };
+  hit.addEventListener('mouseleave', hide);
+
+  // table twin
+  buildTable($('intraday-table'),
+    ['Time', 'Production (kW)', 'Consumption (kW)', 'Net grid (kW)'],
+    rows.slice().reverse().map(r => [
+      new Date(r[0] * 1000).toLocaleString(),
+      fmt(r[1], 2), fmt(r[2], 2), fmt(r[3], 2)
+    ]));
+}
+
+/* ---------- monthly grouped bars --------------------------------------- */
+function renderMonthly(history) {
+  const svg = $('monthly');
+  clear(svg);
+  const months = history.months || [];
+  const W = 1000, H = 260, padL = 52, padR = 14, padT = 12, padB = 34;
+
+  const series = [
+    { name: 'Production', color: css('--series-1'), get: m => m.pv_kwh },
+    { name: 'Consumption', color: css('--series-2'), get: m => m.consumption_kwh },
+  ];
+  const legend = $('monthly-legend');
+  clear(legend);
+  for (const s of series) {
+    const item = document.createElement('span');
+    item.className = 'item';
+    item.innerHTML = `<span class="swatch" style="background:${s.color}"></span>${s.name}`;
+    legend.appendChild(item);
+  }
+  if (!months.length) return;
+
+  const hi = Math.max(...months.flatMap(m => [m.pv_kwh, m.consumption_kwh])) * 1.08 || 1;
+  const Y = v => padT + (1 - v / hi) * (H - padT - padB);
+  const bandW = (W - padL - padR) / months.length;
+  const barW = Math.max(4, (bandW - 12) / 2 - 1);   // 2px surface gap between adjacent bars
+
+  const step = niceStep(hi / 4);
+  for (let v = 0; v <= hi; v += step) {
+    svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
+      stroke: v === 0 ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
+    const t = el('text', { x: padL - 8, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--text-muted') });
+    t.textContent = Math.round(v);
+    svg.appendChild(t);
+  }
+  const yl = el('text', { x: padL - 8, y: padT - 2, 'text-anchor': 'end', 'font-size': 10, fill: css('--text-muted') });
+  yl.textContent = 'kWh';
+  svg.appendChild(yl);
+
+  const tip = $('monthly-tip');
+  months.forEach((m, i) => {
+    const cx = padL + bandW * i + bandW / 2;
+    series.forEach((s, j) => {
+      const v = s.get(m);
+      const x = cx - barW - 1 + j * (barW + 2);
+      const y = Y(v);
+      const r = el('rect', { x, y, width: barW, height: Math.max(1, H - padB - y),
+        fill: s.color, rx: 4, ry: 4 });
+      r.addEventListener('mouseenter', ev => {
+        const box = svg.getBoundingClientRect();
+        tip.innerHTML = `<b>${m.month}</b>`
+          + series.map(ss => `<div class="row"><span class="sw" style="background:${ss.color}"></span>${ss.name}<span class="num">${fmt(ss.get(m), 0)} kWh</span></div>`).join('')
+          + `<div class="row">Days<span class="num">${m.days}</span></div>`;
+        tip.style.opacity = 1;
+        tip.style.left = `${cx / W * box.width}px`;
+        tip.style.top = `${Y(Math.max(m.pv_kwh, m.consumption_kwh)) / H * box.height - 8}px`;
+      });
+      r.addEventListener('mouseleave', () => tip.style.opacity = 0);
+      svg.appendChild(r);
+    });
+    const t = el('text', { x: cx, y: H - padB + 16, 'text-anchor': 'middle', 'font-size': 10.5, fill: css('--text-muted') });
+    t.textContent = m.month.slice(2);
+    svg.appendChild(t);
+  });
+
+  buildTable($('monthly-table'),
+    ['Month', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Days'],
+    months.slice().reverse().map(m => [m.month, fmt(m.pv_kwh, 0), fmt(m.consumption_kwh, 0), fmt(m.net_kwh, 0), m.days]));
+}
+
+/* ---------- monthly net grid: diverging bars --------------------------- */
+function renderNetGrid(history) {
+  const svg = $('netgrid');
+  clear(svg);
+  const months = history.months || [];
+  if (!months.length) return;
+  const W = 1000, H = 220, padL = 52, padR = 14, padT = 14, padB = 34;
+
+  const vals = months.map(m => m.net_kwh);
+  const hi = Math.max(...vals, 0), lo = Math.min(...vals, 0);
+  const span = (hi - lo) || 1;
+  const Y = v => padT + (1 - (v - lo) / span) * (H - padT - padB);
+  const bandW = (W - padL - padR) / months.length;
+  const barW = Math.max(6, bandW - 14);
+
+  const step = niceStep(span / 4);
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
+      stroke: Math.abs(v) < 1e-9 ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
+    const t = el('text', { x: padL - 8, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--text-muted') });
+    t.textContent = Math.round(v);
+    svg.appendChild(t);
+  }
+  const yl = el('text', { x: padL - 8, y: padT - 2, 'text-anchor': 'end', 'font-size': 10, fill: css('--text-muted') });
+  yl.textContent = 'kWh';
+  svg.appendChild(yl);
+
+  const tip = $('netgrid-tip');
+  const zero = Y(0);
+  months.forEach((m, i) => {
+    const v = m.net_kwh;
+    const cx = padL + bandW * i + bandW / 2;
+    const y = v >= 0 ? Y(v) : zero;
+    const h = Math.max(1, Math.abs(Y(v) - zero));
+    const color = v >= 0 ? css('--diverge-pos') : css('--diverge-neg');
+    const r = el('rect', { x: cx - barW / 2, y, width: barW, height: h, fill: color, rx: 4, ry: 4 });
+    r.addEventListener('mouseenter', () => {
+      const box = svg.getBoundingClientRect();
+      tip.innerHTML = `<b>${m.month}</b><div class="row">${v >= 0 ? 'Imported' : 'Exported'}<span class="num">${fmt(Math.abs(v), 0)} kWh</span></div>`;
+      tip.style.opacity = 1;
+      tip.style.left = `${cx / W * box.width}px`;
+      tip.style.top = `${Math.min(y, zero) / H * box.height - 8}px`;
+    });
+    r.addEventListener('mouseleave', () => tip.style.opacity = 0);
+    svg.appendChild(r);
+    const t = el('text', { x: cx, y: H - padB + 16, 'text-anchor': 'middle', 'font-size': 10.5, fill: css('--text-muted') });
+    t.textContent = m.month.slice(2);
+    svg.appendChild(t);
+  });
+}
+
+function niceStep(raw) {
+  const p = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-9))));
+  const n = raw / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+
+/* ---------- inverters: sequential ramp over a grid ---------------------- */
+function renderInverters(live) {
+  const box = $('inverters');
+  clear(box);
+  const list = live.inverters || [];
+  $('inv-sub').textContent = `${list.length} reporting — shaded by today's production`;
+
+  const ramp = ['--seq-100', '--seq-250', '--seq-400', '--seq-550', '--seq-700'].map(css);
+  const vals = list.map(i => i.today_kwh).filter(v => v !== null && v !== undefined);
+  const max = Math.max(...vals, 0.001);
+
+  const rampBox = $('inv-ramp');
+  clear(rampBox);
+  for (const c of ramp) {
+    const i = document.createElement('i');
+    i.style.background = c;
+    rampBox.appendChild(i);
+  }
+
+  for (const inv of list) {
+    const cell = document.createElement('div');
+    cell.className = 'inv';
+    const v = inv.today_kwh;
+    if (v !== null && v !== undefined) {
+      const idx = Math.min(ramp.length - 1, Math.floor(v / max * ramp.length));
+      cell.style.background = ramp[idx];
+      // Dark ramp steps need light ink; the two darkest steps are below the text.
+      if (idx >= 3) cell.style.color = '#fff';
+    }
+    const low = inv.pct_of_avg !== undefined && inv.pct_of_avg < 80;
+    cell.innerHTML =
+      `<div class="sn">…${inv.serial.slice(-6)}</div>` +
+      `<div class="kwh">${fmt(v, 1)}<span style="font-size:10px;font-weight:500"> kWh</span></div>` +
+      `<div class="state"><span class="dot" style="background:${low ? css('--warning') : css('--good')}"></span>` +
+      `${low ? `${inv.pct_of_avg}% of avg` : inv.state}</div>`;
+    cell.title = `${inv.serial}\n${fmt(inv.kw, 3)} kW now\n${fmt(v, 2)} kWh today\n${fmt(inv.lifetime_kwh, 0)} kWh lifetime`
+      + (inv.pct_of_avg !== undefined ? `\n${inv.pct_of_avg}% of array average` : '');
+    box.appendChild(cell);
+  }
+}
+
+/* ---------- alerts, meters, history ------------------------------------ */
+function renderAlerts(live) {
+  const box = $('alerts');
+  clear(box);
+  const alerts = live.alerts || [];
+  if (!alerts.length) {
+    const li = document.createElement('li');
+    li.className = 'lv-info';
+    li.innerHTML = `<span class="ico">✓</span><span>Nothing to report.</span>`;
+    box.appendChild(li);
+    return;
+  }
+  for (const a of alerts) {
+    const li = document.createElement('li');
+    li.className = `lv-${a.level}`;
+    const ico = a.level === 'error' ? '✕' : a.level === 'warn' ? '!' : 'i';
+    li.innerHTML = `<span class="ico">${ico}</span><span></span>`;
+    li.lastChild.textContent = a.text;
+    box.appendChild(li);
+  }
+}
+
+function renderMeters(live) {
+  const box = $('meters');
+  clear(box);
+  const m = live.meters;
+  if (!m) { box.textContent = 'No meter data yet.'; return; }
+
+  const block = (title, rows) => {
+    const d = document.createElement('div');
+    d.innerHTML = `<div class="mt">${title}</div>` + rows.map(([k, v]) =>
+      `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+    return d;
+  };
+  box.appendChild(block('Production meter', [
+    ['Serial', m.production.serial],
+    ['Now', `${fmt(m.production.kw, 3)} kW`],
+    ['Lifetime', `${fmt(m.production.lifetime_net_kwh, 0)} kWh`],
+  ]));
+  box.appendChild(block('Consumption meter', [
+    ['Serial', m.consumption.serial],
+    ['Now', `${fmt(m.consumption.kw, 3)} kW`],
+    ['Lifetime net', `${fmt(m.consumption.lifetime_net_kwh, 0)} kWh`],
+    ['Reverse register', `${fmt(m.consumption.lifetime_neg_kwh, 3)} kWh`],
+  ]));
+  box.appendChild(block('Service', [
+    ['Frequency', `${fmt(m.frequency_hz, 2)} Hz`],
+    ['Voltage', `${fmt(m.voltage_v, 1)} V`],
+    ['Read at', m.timestamp],
+  ]));
+}
+
+function renderHistory(history) {
+  const days = (history.days || []).slice().reverse();
+  $('history-sub').textContent = `${days.length} days`;
+  buildTable($('history'),
+    ['Date', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Inverters', 'Hours', 'Alerts'],
+    days.map(d => [
+      d.date, fmt(d.pv_kwh, 2), fmt(d.consumption_kwh, 2),
+      { v: fmt(d.net_kwh, 2), cls: d.net_kwh < 0 ? 'neg' : '' },
+      d.inverters, d.hours === null || d.hours === undefined ? '—' : fmt(d.hours, 1),
+      { v: d.alerts || '', cls: 'alert' },
+    ]), true);
+}
+
+function buildTable(host, headers, rows, sortable = false) {
+  clear(host);
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const htr = document.createElement('tr');
+  headers.forEach((h, i) => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    if (sortable) {
+      th.addEventListener('click', () => {
+        const dir = th.dataset.dir === 'asc' ? -1 : 1;
+        htr.querySelectorAll('th').forEach(x => delete x.dataset.dir);
+        th.dataset.dir = dir === 1 ? 'asc' : 'desc';
+        rows.sort((a, b) => {
+          const av = cellValue(a[i]), bv = cellValue(b[i]);
+          const an = parseFloat(av), bn = parseFloat(bv);
+          if (!Number.isNaN(an) && !Number.isNaN(bn)) return (an - bn) * dir;
+          return String(av).localeCompare(String(bv)) * dir;
+        });
+        fill();
+      });
+    }
+    htr.appendChild(th);
+  });
+  thead.appendChild(htr);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  table.appendChild(tbody);
+
+  const cellValue = c => (c && typeof c === 'object') ? c.v : c;
+  function fill() {
+    clear(tbody);
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      for (const c of r) {
+        const td = document.createElement('td');
+        if (c && typeof c === 'object') { td.textContent = c.v; if (c.cls) td.className = c.cls; }
+        else td.textContent = c;
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+  fill();
+  host.appendChild(table);
+}
+
+/* ---------- orchestration ---------------------------------------------- */
+async function load(initial = false) {
+  const app = $('app');
+  if (!initial) app.style.opacity = '0.55';   // hold previous render, no skeleton flash
+  try {
+    const results = await Promise.all(FILES.map(fetchAndDecrypt));
+    FILES.forEach((n, i) => DATA[n] = results[i]);
+    renderAll();
+    app.style.opacity = '1';
+  } catch (err) {
+    app.style.opacity = '1';
+    if (initial) fail(`Could not load data: ${err.message}`);
+    else console.warn('refresh failed', err);
+  }
+}
+
+function renderAll() {
+  const live = DATA.live || {};
+  $('updated').textContent = live.latest_sample
+    ? `last reading ${new Date(live.latest_sample.replace(' ', 'T')).toLocaleString()}`
+    : '';
+  const pill = $('status');
+  pill.className = `pill ${live.status === 'ok' ? 'ok' : 'stale'}`;
+  $('status-text').textContent = live.status === 'ok'
+    ? 'live' : `stale (${fmt((live.age_minutes || 0) / 60, 1)} h)`;
+
+  renderKpis(live);
+  renderIntraday(DATA.intraday || { rows: [] });
+  renderMonthly(DATA.history || { months: [] });
+  renderNetGrid(DATA.history || { months: [] });
+  renderInverters(live);
+  renderAlerts(live);
+  renderMeters(live);
+  renderHistory(DATA.history || { days: [] });
+}
+
+function fail(msg) {
+  $('app').classList.add('hidden');
+  $('gate').classList.remove('hidden');
+  $('gate-msg').innerHTML = '';
+  $('gate-msg').textContent = msg;
+}
+
+async function start() {
+  const material = readKeyMaterial();
+  if (!material) {
+    $('gate-msg').innerHTML =
+      'This page needs a decryption key. Open it with the full bookmarked link, '
+      + 'which ends in <code>#k=…</code> — the key is stored on this device afterwards '
+      + 'and never sent to any server.';
+    return;
+  }
+  try {
+    KEY = await importKey(material);
+  } catch (e) {
+    localStorage.removeItem(KEY_STORAGE);
+    $('gate-msg').textContent = `That key is not valid (${e.message}). Reopen the full bookmarked link.`;
+    return;
+  }
+
+  try {
+    const live = await fetchAndDecrypt('live');
+    DATA.live = live;
+  } catch (e) {
+    localStorage.removeItem(KEY_STORAGE);
+    $('gate-msg').textContent =
+      'Could not decrypt the data. The key may be wrong or may have been rotated — '
+      + 'reopen the full bookmarked link. (' + e.message + ')';
+    return;
+  }
+
+  $('gate').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  await load(true);
+  timer = setInterval(() => load(false), REFRESH_MS);
+}
+
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('[data-toggle]');
+  if (t) {
+    const target = $(t.dataset.toggle);
+    const showing = !target.classList.contains('hidden');
+    target.classList.toggle('hidden');
+    t.textContent = showing ? 'Table' : 'Chart';
+  }
+});
+
+$('theme-btn').addEventListener('click', () => {
+  const root = document.documentElement;
+  const now = root.getAttribute('data-theme');
+  const next = now === 'dark' ? 'light' : now === 'light' ? '' : 'dark';
+  if (next) root.setAttribute('data-theme', next); else root.removeAttribute('data-theme');
+  if (DATA.live) renderAll();   // re-read CSS vars into the SVG marks
+});
+
+$('forget-btn').addEventListener('click', () => {
+  localStorage.removeItem(KEY_STORAGE);
+  if (timer) clearInterval(timer);
+  fail('Key removed from this browser. Reopen the full bookmarked link to view the dashboard again.');
+});
+
+start();
+})();
+</script>
+</body>
+</html>
