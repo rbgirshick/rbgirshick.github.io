@@ -525,6 +525,21 @@ footer.colophon {
 
     <section class="card">
       <div class="card-head">
+        <h2 class="eyebrow">Year to date</h2>
+        <p class="sub" id="ytd-sub"></p>
+        <span class="push"></span>
+        <div class="legend" id="ytd-legend"></div>
+        <button class="toggle-table" data-toggle="ytd-table">Table</button>
+      </div>
+      <div class="chart-wrap">
+        <svg class="chart" id="ytd" viewBox="0 0 1000 300" role="img" aria-label="Cumulative year-to-date energy"></svg>
+        <div class="tooltip" id="ytd-tip"></div>
+      </div>
+      <div class="table-wrap hidden" id="ytd-table" style="margin-top:12px"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
         <h2 class="eyebrow">The array</h2>
         <p class="sub" id="array-sub"></p>
       </div>
@@ -1242,6 +1257,116 @@ function buildCompass() {
   return wrap;
 }
 
+/* ---------- year to date: cumulative lines ------------------------------ */
+function renderYTD(history) {
+  const svg = $('ytd');
+  clear(svg);
+  const PROD = css('--prod'), CONS = css('--cons'), NET = css('--net');
+  legendInto('ytd-legend', [['Production', PROD], ['Consumption', CONS], ['Net grid', NET]]);
+
+  const allDays = history.days || [];
+  if (!allDays.length) { $('ytd-sub').textContent = 'no data yet'; return; }
+  const year = +allDays[allDays.length - 1].date.slice(0, 4);
+  const days = allDays.filter(d => +d.date.slice(0, 4) === year);
+  if (!days.length) return;
+
+  $('ytd-sub').textContent =
+    `Cumulative since Jan 1, ${year} — outage catch-up totals step on the day they were recorded.`;
+
+  // running sums
+  let p = 0, u = 0, n = 0;
+  const rows = days.map(d => {
+    p += d.pv_kwh || 0; u += d.consumption_kwh || 0; n += d.net_kwh || 0;
+    return { date: d.date, p: +p.toFixed(1), u: +u.toFixed(1), n: +n.toFixed(1) };
+  });
+
+  const W = 1000, H = 300, padL = 52, padR = 68, padT = 16, padB = 26;
+  const y0 = Date.UTC(year, 0, 1), y1 = Date.UTC(year + 1, 0, 1);
+  const dayUTC = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+  const X = s => padL + (dayUTC(s) - y0) / (y1 - y0) * (W - padL - padR);
+  const lo = Math.min(0, ...rows.map(r => r.n));
+  const hi = Math.max(1, ...rows.map(r => Math.max(r.p, r.u)));
+  const Y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+
+  const kfmt = v => (Math.round(v) || 0).toLocaleString('en-US');   // || 0 kills "-0"
+  const step = niceStep((hi - lo) / 4);
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) {
+    svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
+      stroke: Math.abs(v) < 1e-9 ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
+    text(svg, padL - 8, Y(v) + 3.5, kfmt(v), { 'text-anchor': 'end' });
+  }
+  text(svg, padL - 8, padT - 6, 'kWh', { 'text-anchor': 'end' });
+
+  // month ticks across the full-year domain
+  for (let m = 0; m < 12; m++) {
+    const x = padL + (Date.UTC(year, m, 1) - y0) / (y1 - y0) * (W - padL - padR);
+    if (m > 0) svg.appendChild(el('line', { x1: x, x2: x, y1: padT, y2: H - padB,
+      stroke: css('--grid'), 'stroke-width': 1 }));
+    const xm = padL + (Date.UTC(year, m, 15) - y0) / (y1 - y0) * (W - padL - padR);
+    text(svg, xm, H - padB + 15, MONTHS[m], { 'text-anchor': 'middle' });
+  }
+
+  const series = [
+    { key: 'p', name: 'Production', color: PROD },
+    { key: 'u', name: 'Consumption', color: CONS },
+    { key: 'n', name: 'Net grid', color: NET },
+  ];
+  for (const s of series) {
+    const d = rows.map((r, i) => `${i ? 'L' : 'M'} ${X(r.date).toFixed(1)} ${Y(r[s.key]).toFixed(1)}`).join(' ');
+    svg.appendChild(el('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2,
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  }
+  // endpoint dots + current totals as direct labels
+  const last = rows[rows.length - 1];
+  for (const s of series) {
+    const x = X(last.date), y = Y(last[s.key]);
+    svg.appendChild(el('circle', { cx: x, cy: y, r: 4, fill: s.color,
+      stroke: css('--surface-1'), 'stroke-width': 2 }));
+    text(svg, x + 8, y + 3.5, `${kfmt(last[s.key])}`, { 'font-size': 11, fill: css('--text-secondary') });
+  }
+
+  // crosshair + tooltip
+  const hair = el('line', { y1: padT, y2: H - padB, stroke: css('--axis'), 'stroke-width': 1, opacity: 0 });
+  svg.appendChild(hair);
+  const dots = series.map(s => {
+    const c = el('circle', { r: 4, fill: s.color, stroke: css('--surface-1'), 'stroke-width': 2, opacity: 0 });
+    svg.appendChild(c);
+    return c;
+  });
+  const tip = $('ytd-tip');
+  const hit = el('rect', { x: padL, y: padT, width: W - padL - padR, height: H - padT - padB,
+    fill: 'transparent', style: 'cursor:crosshair' });
+  svg.appendChild(hit);
+  const move = ev => {
+    const box = svg.getBoundingClientRect();
+    const px = (ev.clientX - box.left) / box.width * W;
+    let best = rows[0], bd = Infinity;
+    for (const r of rows) { const d2 = Math.abs(X(r.date) - px); if (d2 < bd) { bd = d2; best = r; } }
+    hair.setAttribute('x1', X(best.date)); hair.setAttribute('x2', X(best.date)); hair.setAttribute('opacity', 1);
+    series.forEach((s, i) => {
+      dots[i].setAttribute('cx', X(best.date)); dots[i].setAttribute('cy', Y(best[s.key]));
+      dots[i].setAttribute('opacity', 1);
+    });
+    const dt = new Date(dayUTC(best.date));
+    tip.innerHTML = `<b>${MONTHS[dt.getUTCMonth()]} ${dt.getUTCDate()}</b>`
+      + series.map(s => `<div class="row"><span class="sw" style="background:${s.color}"></span>${s.name}<span class="num">${kfmt(best[s.key])} kWh</span></div>`).join('');
+    tip.style.opacity = 1;
+    tip.style.left = `${X(best.date) / W * box.width}px`;
+    tip.style.top = `${Y(Math.max(best.p, best.u)) / H * box.height - 12}px`;
+  };
+  hit.addEventListener('mousemove', move);
+  hit.addEventListener('touchmove', e => { move(e.touches[0]); e.preventDefault(); }, { passive: false });
+  hit.addEventListener('mouseleave', () => {
+    tip.style.opacity = 0; hair.setAttribute('opacity', 0); dots.forEach(d => d.setAttribute('opacity', 0));
+  });
+
+  buildTable($('ytd-table'),
+    ['Date', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)'],
+    rows.slice().reverse().map(r => [
+      r.date, kfmt(r.p), kfmt(r.u), { v: kfmt(r.n), cls: r.n < 0 ? 'exp' : '' },
+    ]));
+}
+
 /* ---------- the array ---------------------------------------------------
    Each microinverter drawn as the panel it sits under, placed as on the
    installer's as-built drawing: strings 1 and 2 on one roof face (string 2
@@ -1512,6 +1637,7 @@ function renderAll() {
   renderStrip(DATA.intraday || { rows: [] }, DATA.history || {}, live);
   renderMonthly(DATA.history || { months: [] });
   renderNetGrid(DATA.history || { months: [] });
+  renderYTD(DATA.history || { days: [] });
   renderArray(live);
   renderSystemNotes(live);
   renderMeters(live);
