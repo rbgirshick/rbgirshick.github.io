@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
 <title>Ironhorse Solar</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌞</text></svg>">
 <script>
 /* Apply the saved theme before first paint to avoid a flash.
    ?theme=light|dark overrides for this visit without persisting. */
@@ -1065,7 +1066,11 @@ function renderNetGrid(history) {
    good to well under a degree - plenty for a compass glyph). Coordinates
    are the approximate site location; nudge them to the rooftop for
    exactness.                                                             */
-const SITE_LAT = 42.5, SITE_LON = -71.0;
+/* Derived from the production archive's sunrise/sunset envelope across
+   seasons (Seattle area — the upstream README's "northeast USA" is the
+   original author's system, not this one). Nudge to the rooftop for
+   exactness. */
+const SITE_LAT = 47.6, SITE_LON = -122.3;
 
 function sunPosition(date, lat, lon) {
   const rad = Math.PI / 180;
