@@ -414,6 +414,8 @@ td.exp { color: var(--good-text); }
 .alert-list .lv-warn .ico { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--text-primary); }
 .alert-list .lv-error .ico { background: color-mix(in srgb, var(--critical) 18%, transparent); color: var(--critical); }
 .alert-list .txt { color: var(--text-secondary); }
+.sys-notes { margin-bottom: 12px; font-size: 12.5px; }
+.sys-notes li { padding: 5px 0; }
 
 /* --- meters ------------------------------------------------------------ */
 .meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px 26px; }
@@ -534,26 +536,20 @@ footer.colophon {
       </div>
     </section>
 
-    <div class="two-col">
-      <section class="card">
-        <div class="card-head"><h2 class="eyebrow">Alerts</h2></div>
-        <ul class="alert-list" id="alerts"></ul>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <h2 class="eyebrow">Meters</h2>
-          <p class="sub">Resolved by serial number, never device index.</p>
-        </div>
-        <div class="meters" id="meters"></div>
-      </section>
-    </div>
+    <section class="card">
+      <div class="card-head">
+        <h2 class="eyebrow">Meters</h2>
+        <p class="sub">Resolved by serial number, never device index.</p>
+      </div>
+      <div class="meters" id="meters"></div>
+    </section>
 
     <section class="card">
       <div class="card-head">
         <h2 class="eyebrow">Daily log</h2>
         <p class="sub" id="history-sub"></p>
       </div>
+      <ul class="alert-list sys-notes hidden" id="sys-notes"></ul>
       <div class="table-wrap" id="history"></div>
     </section>
 
@@ -1373,19 +1369,16 @@ function renderArray(live) {
   }
 }
 
-/* ---------- alerts, meters, history ------------------------------------ */
-function renderAlerts(live) {
-  const box = $('alerts');
+/* ---------- system notes, meters, history ------------------------------ */
+function renderSystemNotes(live) {
+  // Per-day alerts already live in the daily log's Alerts column; only
+  // system-level notes (stale collection, CT status) surface up here.
+  const box = $('sys-notes');
   clear(box);
-  const alerts = live.alerts || [];
-  if (!alerts.length) {
-    const li = document.createElement('li');
-    li.className = 'lv-ok';
-    li.innerHTML = `<span class="ico">✓</span><span class="txt">All clear — nothing to report.</span>`;
-    box.appendChild(li);
-    return;
-  }
-  for (const a of alerts) {
+  const dailyPrefix = /^\d{4}-\d{2}-\d{2}:/;
+  const notes = (live.alerts || []).filter(a => !dailyPrefix.test(a.text || ''));
+  box.classList.toggle('hidden', !notes.length);
+  for (const a of notes) {
     const li = document.createElement('li');
     li.className = `lv-${a.level}`;
     const ico = a.level === 'error' ? '✕' : a.level === 'warn' ? '!' : 'i';
@@ -1520,7 +1513,7 @@ function renderAll() {
   renderMonthly(DATA.history || { months: [] });
   renderNetGrid(DATA.history || { months: [] });
   renderArray(live);
-  renderAlerts(live);
+  renderSystemNotes(live);
   renderMeters(live);
   renderHistory(DATA.history || { days: [] });
   firstRender = false;
