@@ -446,6 +446,7 @@ footer.colophon {
   background: var(--surface-1); border: 1px solid var(--border);
   padding: 2px 6px; border-radius: 4px; font-size: 12px; word-break: break-all;
 }
+.gate button { margin-top: 14px; }
 .hidden { display: none !important; }
 </style>
 </head>
@@ -456,6 +457,7 @@ footer.colophon {
     <div class="sun-disc"></div>
     <h1>Ironhorse Solar</h1>
     <p id="gate-msg">Decrypting…</p>
+    <button class="ghost hidden" id="gate-retry" type="button">Try again</button>
   </div>
 
   <div id="app" class="hidden">
@@ -596,17 +598,19 @@ let firstRender = true;
 
 /* ---------- key handling ------------------------------------------------
    The key arrives in the URL fragment, which browsers never send to a server.
-   We stash it in localStorage and strip it from the address bar, then reuse
-   it on later visits - which is what lets notification click-throughs
-   (which deliberately carry no key) still work.                            */
+   We reuse it on later visits - which is what lets notification
+   click-throughs (which deliberately carry no key) still work.
+
+   A fragment key is NOT written to storage until it has actually decrypted
+   something, so a truncated or wrong #k= (an email client wrapping the line,
+   say) can never overwrite a stored key that works.                        */
 function readKeyMaterial() {
   const m = location.hash.match(/[#&]k=([A-Za-z0-9_\-=]+)/);
   if (m) {
-    localStorage.setItem(KEY_STORAGE, m[1]);
     history.replaceState(null, '', location.pathname + location.search);
-    return m[1];
+    return { material: m[1], fromFragment: true };
   }
-  return localStorage.getItem(KEY_STORAGE);
+  return { material: localStorage.getItem(KEY_STORAGE), fromFragment: false };
 }
 
 function b64urlToBytes(s) {
@@ -621,10 +625,27 @@ async function importKey(material) {
   return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
 }
 
+/* Transport failures are tagged `transient` so callers can tell "the feed is
+   unreachable right now" apart from "this key cannot decrypt the feed".
+   Only the latter is ever evidence that a stored key is bad. */
+function transient(message) {
+  return Object.assign(new Error(message), { transient: true });
+}
+
 async function fetchAndDecrypt(name) {
-  const res = await fetch(`${BASE}/${name}.bin?t=${Date.now()}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
-  const blob = new Uint8Array(await res.arrayBuffer());
+  let res;
+  try {
+    res = await fetch(`${BASE}/${name}.bin?t=${Date.now()}`, { cache: 'no-store' });
+  } catch (e) {
+    throw transient(`network error (${e.message})`);
+  }
+  if (!res.ok) throw transient(`${name}: HTTP ${res.status}`);
+  let blob;
+  try {
+    blob = new Uint8Array(await res.arrayBuffer());
+  } catch (e) {
+    throw transient(`truncated download (${e.message})`);
+  }
   // Layout written by publish_dashboard.py: nonce(12) || ciphertext || tag(16).
   const iv = blob.slice(0, 12);
   const body = blob.slice(12);
@@ -1615,10 +1636,15 @@ async function load(initial = false) {
     FILES.forEach((n, i) => DATA[n] = results[i]);
     renderAll();
     app.style.opacity = '1';
+    return true;
   } catch (err) {
     app.style.opacity = '1';
-    if (initial) fail(`Could not load data: ${err.message}`);
+    // A refresh failure is not worth interrupting a working page for - the
+    // previous render stays. A failure on the very first load has nothing to
+    // fall back on, so it shows the gate with a way back in.
+    if (initial) fail(`Could not load the data (${err.message}).`, true);
     else console.warn('refresh failed', err);
+    return false;
   }
 }
 
@@ -1645,15 +1671,54 @@ function renderAll() {
   firstRender = false;
 }
 
-function fail(msg) {
+function fail(msg, retry = false) {
   $('app').classList.add('hidden');
   $('gate').classList.remove('hidden');
   $('gate-msg').innerHTML = '';
   $('gate-msg').textContent = msg;
+  $('gate-retry').classList.toggle('hidden', !retry);
 }
 
+let KEY_MATERIAL = null;      // held until it has proved it can decrypt
+
+/* Fetch the first payload and start the page. Separated from start() so the
+   retry button can run it again with the in-memory key - a fragment key that
+   has not been stored yet would not survive a page reload. */
+async function boot() {
+  try {
+    DATA.live = await fetchAndDecrypt('live');
+  } catch (e) {
+    if (e.transient) {
+      // The feed is unreachable, which says nothing about the key: keep it.
+      fail(`Could not reach the data feed — ${e.message}. The dashboard will `
+        + 'work again once the connection is back; your key is still saved.', true);
+    } else {
+      // A genuine decrypt failure. Only a stored key can be stale here; a
+      // fragment key was never written, so there is nothing to clean up.
+      if (!FROM_FRAGMENT) localStorage.removeItem(KEY_STORAGE);
+      fail('Could not decrypt the data. The key may be wrong or may have been '
+        + `rotated — reopen the full bookmarked link. (${e.message})`);
+    }
+    return;
+  }
+
+  // The key works: now it is safe to remember it.
+  try { localStorage.setItem(KEY_STORAGE, KEY_MATERIAL); } catch (e) { /* private mode */ }
+
+  $('gate').classList.add('hidden');
+  $('gate-retry').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  // Only run the refresh loop once a first render actually succeeded, so a
+  // failed start cannot leave the timer painting into a hidden page.
+  if (await load(true) && !timer) timer = setInterval(() => load(false), REFRESH_MS);
+}
+
+let FROM_FRAGMENT = false;
+
 async function start() {
-  const material = readKeyMaterial();
+  const { material, fromFragment } = readKeyMaterial();
+  FROM_FRAGMENT = fromFragment;
+  KEY_MATERIAL = material;
   if (!material) {
     $('gate-msg').innerHTML =
       'This page needs its decryption key. Open the full bookmarked link — the one ending '
@@ -1663,25 +1728,14 @@ async function start() {
   try {
     KEY = await importKey(material);
   } catch (e) {
-    localStorage.removeItem(KEY_STORAGE);
-    $('gate-msg').textContent = `That key is not valid (${e.message}). Reopen the full bookmarked link.`;
+    if (!fromFragment) localStorage.removeItem(KEY_STORAGE);
+    $('gate-msg').textContent = fromFragment
+      ? `That link's key is not valid (${e.message}) — it may have been truncated. `
+        + 'Reopen the full bookmarked link.'
+      : `That key is not valid (${e.message}). Reopen the full bookmarked link.`;
     return;
   }
-
-  try {
-    DATA.live = await fetchAndDecrypt('live');
-  } catch (e) {
-    localStorage.removeItem(KEY_STORAGE);
-    $('gate-msg').textContent =
-      'Could not decrypt the data. The key may be wrong or may have been rotated — '
-      + 'reopen the full bookmarked link. (' + e.message + ')';
-    return;
-  }
-
-  $('gate').classList.add('hidden');
-  $('app').classList.remove('hidden');
-  await load(true);
-  timer = setInterval(() => load(false), REFRESH_MS);
+  await boot();
 }
 
 document.addEventListener('click', ev => {
@@ -1703,9 +1757,16 @@ $('theme-btn').addEventListener('click', () => {
   if (DATA.live) renderAll();   // re-read CSS vars into the SVG marks
 });
 
+$('gate-retry').addEventListener('click', () => {
+  $('gate-retry').classList.add('hidden');
+  $('gate-msg').textContent = 'Reconnecting…';
+  boot();
+});
+
 $('forget-btn').addEventListener('click', () => {
   localStorage.removeItem(KEY_STORAGE);
-  if (timer) clearInterval(timer);
+  if (timer) { clearInterval(timer); timer = null; }
+  KEY = null; KEY_MATERIAL = null;   // stop the refresh loop decrypting anything more
   fail('Key removed from this browser. Reopen the full bookmarked link to view the dashboard again.');
 });
 
