@@ -1077,21 +1077,67 @@ function renderNetGrid(history) {
    exactness. */
 const SITE_LAT = 47.6, SITE_LON = -122.3;
 
-function sunPosition(date, lat, lon) {
-  const rad = Math.PI / 180;
-  const d = date.getTime() / 86400000 + 2440587.5 - 2451545;   // days since J2000
-  const g = rad * (357.529 + 0.98560028 * d);                  // mean anomaly
-  const q = 280.459 + 0.98564736 * d;                          // mean longitude
-  const L = rad * (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g));
-  const e = rad * 23.439;
-  const RA = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
-  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+const RAD = Math.PI / 180;
+const daysJ2000 = date => date.getTime() / 86400000 + 2440587.5 - 2451545;
+
+function eqToAltAz(RA, dec, d, lat, lon) {
   const gmst = 18.697374558 + 24.06570982441908 * d;           // hours
-  const H = (gmst * 15 + lon) * rad - RA;                      // hour angle
-  const sinEl = Math.sin(lat * rad) * Math.sin(dec) + Math.cos(lat * rad) * Math.cos(dec) * Math.cos(H);
+  const H = (gmst * 15 + lon) * RAD - RA;                      // hour angle
+  const sinEl = Math.sin(lat * RAD) * Math.sin(dec) + Math.cos(lat * RAD) * Math.cos(dec) * Math.cos(H);
   const el = Math.asin(sinEl);
-  const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(lat * rad) - Math.tan(dec) * Math.cos(lat * rad));
-  return { azimuth: ((az / rad) + 180 + 360) % 360, elevation: el / rad };
+  const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(lat * RAD) - Math.tan(dec) * Math.cos(lat * RAD));
+  return { azimuth: ((az / RAD) + 180 + 360) % 360, elevation: el / RAD };
+}
+
+function sunCoords(d) {
+  const g = RAD * (357.529 + 0.98560028 * d);                  // mean anomaly
+  const q = 280.459 + 0.98564736 * d;                          // mean longitude
+  const L = RAD * (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g));
+  const e = RAD * 23.439;
+  return {
+    RA: Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)),
+    dec: Math.asin(Math.sin(e) * Math.sin(L)),
+  };
+}
+
+function moonCoords(d) {
+  // Low-precision lunar ephemeris (Astronomical Algorithms via suncalc);
+  // about a degree of accuracy - plenty for a compass glyph.
+  const L = RAD * (218.316 + 13.176396 * d);   // ecliptic longitude
+  const M = RAD * (134.963 + 13.064993 * d);   // mean anomaly
+  const F = RAD * (93.272 + 13.229350 * d);    // mean distance argument
+  const l = L + RAD * 6.289 * Math.sin(M);
+  const b = RAD * 5.128 * Math.sin(F);
+  const e = RAD * 23.439;
+  return {
+    RA: Math.atan2(Math.sin(l) * Math.cos(e) - Math.tan(b) * Math.sin(e), Math.cos(l)),
+    dec: Math.asin(Math.sin(b) * Math.cos(e) + Math.cos(b) * Math.sin(e) * Math.sin(l)),
+    dist: 385001 - 20905 * Math.cos(M),        // km
+  };
+}
+
+function sunPosition(date, lat, lon) {
+  const d = daysJ2000(date);
+  const s = sunCoords(d);
+  return eqToAltAz(s.RA, s.dec, d, lat, lon);
+}
+
+function moonInfo(date, lat, lon) {
+  const d = daysJ2000(date);
+  const s = sunCoords(d), m = moonCoords(d);
+  const pos = eqToAltAz(m.RA, m.dec, d, lat, lon);
+  // Illuminated fraction from the sun-moon-earth phase angle (suncalc).
+  const sdist = 149598000;
+  const phi = Math.acos(Math.sin(s.dec) * Math.sin(m.dec)
+    + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.RA - m.RA));
+  const inc = Math.atan2(sdist * Math.sin(phi), m.dist - sdist * Math.cos(phi));
+  const angle = Math.atan2(Math.cos(s.dec) * Math.sin(s.RA - m.RA),
+    Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.RA - m.RA));
+  return {
+    ...pos,
+    fraction: (1 + Math.cos(inc)) / 2,
+    waxing: angle < 0,
+  };
 }
 
 const compassPoint = az => ['N','NE','E','SE','S','SW','W','NW'][Math.round(az / 45) % 8];
@@ -1099,15 +1145,25 @@ const compassPoint = az => ['N','NE','E','SE','S','SW','W','NW'][Math.round(az /
 /* Compass with the sun drawn in the sky: the ring is the horizon, the
    center is straight up. Plan orientation: up is east, right is south. */
 function buildCompass() {
-  const { azimuth, elevation } = sunPosition(new Date(), SITE_LAT, SITE_LON);
+  const now = new Date();
+  const { azimuth, elevation } = sunPosition(now, SITE_LAT, SITE_LON);
+  const moon = moonInfo(now, SITE_LAT, SITE_LON);
+  const litPct = Math.round(moon.fraction * 100);
+  const moonDesc = litPct >= 99 ? 'full' : litPct <= 1 ? 'new'
+    : `${litPct}% lit, ${moon.waxing ? 'waxing' : 'waning'}`;
   const wrap = document.createElement('div');
   wrap.className = 'compass';
-  wrap.dataset.tip = `<b>Sun now</b>` +
+  wrap.dataset.tip = `<b>Sun</b>` +
     `<div class="row">azimuth<span class="num">${Math.round(azimuth)}° ${compassPoint(azimuth)}</span></div>` +
     `<div class="row">elevation<span class="num">${Math.round(elevation)}°</span></div>` +
-    (elevation < 0 ? `<div class="row">below the horizon</div>` : '');
+    (elevation < 0 ? `<div class="row">below the horizon</div>` : '') +
+    `<b style="display:block;margin-top:5px">Moon</b>` +
+    `<div class="row">azimuth<span class="num">${Math.round(moon.azimuth)}° ${compassPoint(moon.azimuth)}</span></div>` +
+    `<div class="row">elevation<span class="num">${Math.round(moon.elevation)}°</span></div>` +
+    `<div class="row">phase<span class="num">${moonDesc}</span></div>` +
+    (moon.elevation < 0 ? `<div class="row">below the horizon</div>` : '');
   wrap.setAttribute('aria-label',
-    `Compass: top of the diagram is east, right is south. Sun at azimuth ${Math.round(azimuth)} degrees, elevation ${Math.round(elevation)} degrees.`);
+    `Compass: top of the diagram is east, right is south. Sun at azimuth ${Math.round(azimuth)} degrees, elevation ${Math.round(elevation)} degrees. Moon at azimuth ${Math.round(moon.azimuth)} degrees, elevation ${Math.round(moon.elevation)} degrees, ${moonDesc}.`);
   wrap.tabIndex = 0;
 
   const S = 100, c = S / 2, r = 36;
@@ -1129,14 +1185,43 @@ function buildCompass() {
     fill: 'none', stroke: css('--text-secondary'), 'stroke-width': 1.4,
     'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
   // distance from center encodes elevation: overhead at the center, horizon on the ring
-  const rho = r * Math.min(1, Math.max(0, (90 - Math.max(elevation, 0)) / 90));
-  const sx = c + ux * rho, sy = c + uy * rho;
+  const dialXY = (az, elv) => {
+    const a = az * Math.PI / 180;
+    const rho = r * Math.min(1, Math.max(0, (90 - Math.max(elv, 0)) / 90));
+    return [c - Math.cos(a) * rho, c - Math.sin(a) * rho];
+  };
+  const [sx, sy] = dialXY(azimuth, elevation);
+
+  // moon first, so the sun stays on top if they ever meet on the dial
+  if (moon.elevation >= 0) {
+    const [mx, my] = dialXY(moon.azimuth, moon.elevation);
+    // rotate the glyph so its lit limb faces the sun's position on the dial
+    const theta = Math.atan2(sy - my, sx - mx) * 180 / Math.PI;
+    const g = el('g', { transform: `translate(${mx.toFixed(1)} ${my.toFixed(1)}) rotate(${theta.toFixed(1)})` });
+    const mr = 3.4, k = Math.abs(2 * moon.fraction - 1);
+    g.appendChild(el('circle', { cx: 0, cy: 0, r: mr, fill: 'none',
+      stroke: css('--axis'), 'stroke-width': 0.8 }));
+    if (moon.fraction >= 0.99) {
+      g.appendChild(el('circle', { cx: 0, cy: 0, r: mr, fill: css('--text-secondary') }));
+    } else if (moon.fraction > 0.01) {
+      // lit limb is the +x semicircle; the terminator is a half-ellipse whose
+      // width follows the illuminated fraction (crescent bulges sunward,
+      // gibbous bulges away)
+      const sweep = moon.fraction < 0.5 ? 0 : 1;
+      g.appendChild(el('path', {
+        d: `M 0 ${-mr} A ${mr} ${mr} 0 0 1 0 ${mr} A ${(k * mr).toFixed(2)} ${mr} 0 0 ${sweep} 0 ${-mr} Z`,
+        fill: css('--text-secondary') }));
+    }
+    svg.appendChild(g);
+  }
+
   if (elevation >= 0) {
     svg.appendChild(el('circle', { cx: sx, cy: sy, r: 7.5, fill: css('--sun'), opacity: 0.25 }));
     svg.appendChild(el('circle', { cx: sx, cy: sy, r: 3.8, fill: css('--sun') }));
   } else {
     // night: the sun's bearing, faint, pinned to the horizon ring
-    svg.appendChild(el('circle', { cx: c + ux * r, cy: c + uy * r, r: 3.5,
+    const a = azimuth * Math.PI / 180;
+    svg.appendChild(el('circle', { cx: c - Math.cos(a) * r, cy: c - Math.sin(a) * r, r: 3.5,
       fill: 'none', stroke: css('--sun'), 'stroke-width': 1, opacity: 0.45 }));
   }
   wrap.appendChild(svg);
