@@ -133,10 +133,20 @@ body {
 }
 .mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace; }
 
-button:focus-visible, a:focus-visible, th:focus-visible {
+button:focus-visible, a:focus-visible, th:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid var(--sun);
   outline-offset: 2px;
 }
+
+/* Shared instant tooltip for everything that used a native title attribute.
+   Fixed-position so it rides above cards; content comes from data-tip. */
+#tip {
+  position: fixed; left: 0; top: 0;
+  max-width: 280px; white-space: normal;
+  transform: translate(-50%, calc(-100% - 9px));
+}
+#tip.below { transform: translate(-50%, 12px); }
+#tip .row { white-space: nowrap; }
 
 /* --- header ------------------------------------------------------------ */
 header.top {
@@ -313,15 +323,10 @@ svg.chart text { font-variant-numeric: tabular-nums; }
 .roof-scroll { overflow-x: auto; }
 .roof { min-width: 720px; position: relative; }
 .compass {
-  position: absolute; top: 2px; right: 10px;
-  display: grid;
-  grid-template-columns: repeat(3, 15px);
-  grid-template-rows: repeat(3, 15px);
-  place-items: center;
-  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 500;
-  color: var(--text-muted); user-select: none;
+  position: absolute; top: 0; right: 4px;
+  user-select: none; line-height: 0;
 }
-.compass .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--sun); }
+.compass svg { display: block; }
 .string-label {
   font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 500;
   letter-spacing: 0.1em; text-transform: uppercase;
@@ -454,8 +459,8 @@ footer.colophon {
       <span class="spacer"></span>
       <span class="updated" id="updated"></span>
       <span class="pill ok" id="status"><span class="dot"></span><span id="status-text">live</span></span>
-      <button class="ghost" id="theme-btn" type="button">Theme</button>
-      <button class="ghost" id="forget-btn" type="button" title="Remove the stored decryption key from this browser">Forget key</button>
+      <button class="ghost" id="theme-btn" type="button" data-tip="Cycle light · dark · system">Theme</button>
+      <button class="ghost" id="forget-btn" type="button" data-tip="Removes the stored decryption key from this browser">Forget key</button>
     </header>
 
     <section class="card hero">
@@ -608,6 +613,51 @@ async function fetchAndDecrypt(name) {
   const body = blob.slice(12);
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, KEY, body);
   return JSON.parse(new TextDecoder().decode(plain));
+}
+
+/* ---------- instant tooltips --------------------------------------------
+   One shared styled tooltip replaces every native title attribute: instant,
+   theme-aware, and it also fires on keyboard focus. Content is HTML from
+   the element's data-tip.                                                 */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function initTips() {
+  const tip = document.createElement('div');
+  tip.className = 'tooltip';
+  tip.id = 'tip';
+  tip.setAttribute('role', 'tooltip');
+  document.querySelector('.viz-root').appendChild(tip);
+
+  let current = null;
+  const show = el => {
+    current = el;
+    tip.innerHTML = el.dataset.tip;
+    tip.classList.remove('below');
+    const r = el.getBoundingClientRect();
+    tip.style.left = `${r.left + r.width / 2}px`;
+    tip.style.top = `${r.top}px`;
+    tip.style.opacity = 1;
+    // clamp inside the viewport, flip below when there is no room above
+    const half = tip.offsetWidth / 2;
+    tip.style.left = `${Math.min(window.innerWidth - half - 6, Math.max(half + 6, r.left + r.width / 2))}px`;
+    if (r.top - tip.offsetHeight - 12 < 4) {
+      tip.classList.add('below');
+      tip.style.top = `${r.bottom}px`;
+    }
+  };
+  const hide = () => { current = null; tip.style.opacity = 0; };
+
+  document.addEventListener('mouseover', e => {
+    const t = e.target.closest('[data-tip]');
+    if (t) { if (t !== current) show(t); }
+    else if (current) hide();
+  });
+  document.addEventListener('focusin', e => {
+    const t = e.target.closest('[data-tip]');
+    if (t) show(t); else if (current) hide();
+  });
+  document.addEventListener('focusout', () => { if (current) hide(); });
+  window.addEventListener('scroll', hide, { passive: true, capture: true });
 }
 
 /* ---------- svg helpers ------------------------------------------------ */
@@ -788,10 +838,10 @@ function renderReadouts(live, peak, loadPeak, netPeak) {
     if (m.diverge) {
       const pct = Math.min(50, m.frac * 50).toFixed(1);
       const side = m.dir < 0 ? 'right:50%' : 'left:50%';
-      return `<div class="meter diverge" title="${m.title}">` +
+      return `<div class="meter diverge" data-tip="${esc(m.title)}">` +
         `<i style="${side};width:${pct}%;background:${m.color}"></i><span class="zero"></span></div>`;
     }
-    return `<div class="meter" title="${m.title}" style="background:color-mix(in srgb, ${m.color} 18%, var(--surface-1))">` +
+    return `<div class="meter" data-tip="${esc(m.title)}" style="background:color-mix(in srgb, ${m.color} 18%, var(--surface-1))">` +
       `<i style="width:${Math.min(100, m.frac * 100).toFixed(1)}%;background:${m.color}"></i></div>`;
   };
 
@@ -893,9 +943,10 @@ function renderStrip(intraday, history, live) {
     const kwh = totals.get(day);
     val.textContent = kwh === undefined ? '—' : fmt(kwh, kwh >= 100 ? 0 : 1);
     cell.appendChild(val);
-    cell.title = samples
-      ? `${day} · ${kwh === undefined ? '—' : fmt(kwh, 1)} kWh produced`
-      : `${day} · no samples (collection was down)`;
+    cell.dataset.tip = `<b>${esc(d0.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }))}</b>`
+      + (samples
+        ? `<div class="row">produced<span class="num">${kwh === undefined ? '—' : fmt(kwh, 1)} kWh</span></div>`
+        : `<div class="row">no samples — collection was down</div>`);
     box.appendChild(cell);
   }
 }
@@ -1009,6 +1060,73 @@ function renderNetGrid(history) {
   });
 }
 
+/* ---------- sun position ------------------------------------------------
+   Solar azimuth/elevation from UTC time (standard low-precision astronomy,
+   good to well under a degree - plenty for a compass glyph). Coordinates
+   are the approximate site location; nudge them to the rooftop for
+   exactness.                                                             */
+const SITE_LAT = 42.5, SITE_LON = -71.0;
+
+function sunPosition(date, lat, lon) {
+  const rad = Math.PI / 180;
+  const d = date.getTime() / 86400000 + 2440587.5 - 2451545;   // days since J2000
+  const g = rad * (357.529 + 0.98560028 * d);                  // mean anomaly
+  const q = 280.459 + 0.98564736 * d;                          // mean longitude
+  const L = rad * (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g));
+  const e = rad * 23.439;
+  const RA = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
+  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const gmst = 18.697374558 + 24.06570982441908 * d;           // hours
+  const H = (gmst * 15 + lon) * rad - RA;                      // hour angle
+  const sinEl = Math.sin(lat * rad) * Math.sin(dec) + Math.cos(lat * rad) * Math.cos(dec) * Math.cos(H);
+  const el = Math.asin(sinEl);
+  const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(lat * rad) - Math.tan(dec) * Math.cos(lat * rad));
+  return { azimuth: ((az / rad) + 180 + 360) % 360, elevation: el / rad };
+}
+
+const compassPoint = az => ['N','NE','E','SE','S','SW','W','NW'][Math.round(az / 45) % 8];
+
+/* Compass with the sun drawn in the sky: the ring is the horizon, the
+   center is straight up. Plan orientation: up is east, right is south. */
+function buildCompass() {
+  const { azimuth, elevation } = sunPosition(new Date(), SITE_LAT, SITE_LON);
+  const wrap = document.createElement('div');
+  wrap.className = 'compass';
+  wrap.dataset.tip = `<b>Sun now</b>` +
+    `<div class="row">azimuth<span class="num">${Math.round(azimuth)}° ${compassPoint(azimuth)}</span></div>` +
+    `<div class="row">elevation<span class="num">${Math.round(elevation)}°</span></div>` +
+    (elevation < 0 ? `<div class="row">below the horizon</div>` : '');
+  wrap.setAttribute('aria-label',
+    `Compass: top of the diagram is east, right is south. Sun at azimuth ${Math.round(azimuth)} degrees, elevation ${Math.round(elevation)} degrees.`);
+  wrap.tabIndex = 0;
+
+  const S = 76, c = S / 2, r = 26;
+  const svg = el('svg', { viewBox: `0 0 ${S} ${S}`, width: S, height: S });
+  svg.appendChild(el('circle', { cx: c, cy: c, r, fill: 'none', stroke: css('--axis'), 'stroke-width': 1 }));
+  // plan orientation: az 0 (N) left, 90 (E) up, 180 (S) right, 270 (W) down
+  const a = azimuth * Math.PI / 180;
+  const ux = -Math.cos(a), uy = -Math.sin(a);
+  for (const [ch, x, y] of [['E', c, 7], ['S', S - 4, c], ['W', c, S - 3], ['N', 4, c]]) {
+    const t = el('text', { x, y: y + 3, 'text-anchor': 'middle', 'font-size': 9,
+      fill: css('--text-muted'), 'font-family': "'IBM Plex Mono', monospace" });
+    t.textContent = ch;
+    svg.appendChild(t);
+  }
+  // distance from center encodes elevation: overhead at the center, horizon on the ring
+  const rho = r * Math.min(1, Math.max(0, (90 - Math.max(elevation, 0)) / 90));
+  const sx = c + ux * rho, sy = c + uy * rho;
+  if (elevation >= 0) {
+    svg.appendChild(el('circle', { cx: sx, cy: sy, r: 6.5, fill: css('--sun'), opacity: 0.25 }));
+    svg.appendChild(el('circle', { cx: sx, cy: sy, r: 3.2, fill: css('--sun') }));
+  } else {
+    // night: the sun's bearing, faint, pinned to the horizon ring
+    svg.appendChild(el('circle', { cx: c + ux * r, cy: c + uy * r, r: 3,
+      fill: 'none', stroke: css('--sun'), 'stroke-width': 1, opacity: 0.45 }));
+  }
+  wrap.appendChild(svg);
+  return wrap;
+}
+
 /* ---------- the array ---------------------------------------------------
    Each microinverter drawn as the panel it sits under, placed as on the
    installer's as-built drawing: strings 1 and 2 on one roof face (string 2
@@ -1053,7 +1171,8 @@ function renderArray(live) {
     cell.className = 'panel';
     if (!inv) {
       cell.innerHTML = `<div class="sn">—</div><div class="kwh">—</div>`;
-      cell.title = 'No data from this module';
+      cell.dataset.tip = 'No data from this module';
+      cell.tabIndex = 0;
       return cell;
     }
     const v = inv.today_kwh;
@@ -1064,37 +1183,29 @@ function renderArray(live) {
     }
     const low = inv.pct_of_avg !== undefined && inv.pct_of_avg < 80;
     const working = (inv.state || '').toLowerCase() === 'working';
-    // The big number is the day's energy; the status line carries the live
-    // watts so cumulative and instantaneous never get mistaken for each other.
-    const stateText = !working ? (inv.state || 'ok').toLowerCase()
-      : low ? `${inv.pct_of_avg}% of avg`
-      : `${Math.round((inv.kw || 0) * 1000)} W now`;
+    // The big number is the day's energy; the status line always carries the
+    // live watts so cumulative and instantaneous never get mistaken for each
+    // other. A laggard keeps its watts too - the warning dot and the tooltip
+    // carry the diagnosis.
+    const stateText = working ? `${Math.round((inv.kw || 0) * 1000)} W now`
+                              : (inv.state || 'ok').toLowerCase();
     cell.innerHTML =
       `<div class="sn">…${inv.serial.slice(-6)}</div>` +
       `<div class="kwh">${fmt(v, 1)}<span class="u"> kWh today</span></div>` +
       `<div class="state"><span class="dot" style="background:${low ? css('--warning') : css('--good')}"></span>` +
       `${stateText}</div>`;
-    cell.title = `${inv.serial}\n${fmt(inv.kw, 3)} kW now\n${fmt(v, 2)} kWh today\n${fmt(inv.lifetime_kwh, 0)} kWh lifetime`
-      + (inv.pct_of_avg !== undefined ? `\n${inv.pct_of_avg}% of array average` : '');
+    cell.dataset.tip = `<b>${esc(inv.serial)}</b>` +
+      `<div class="row">now<span class="num">${Math.round((inv.kw || 0) * 1000)} W</span></div>` +
+      `<div class="row">today<span class="num">${fmt(v, 2)} kWh</span></div>` +
+      `<div class="row">lifetime<span class="num">${fmt(inv.lifetime_kwh, 0)} kWh</span></div>` +
+      (inv.pct_of_avg !== undefined
+        ? `<div class="row">of array average<span class="num">${esc(inv.pct_of_avg)}%</span></div>` : '') +
+      (!working ? `<div class="row">state<span class="num">${esc(inv.state)}</span></div>` : '');
+    cell.tabIndex = 0;
     return cell;
   };
 
-  // Compass: on this plan, up is east and right is south.
-  const compass = document.createElement('div');
-  compass.className = 'compass';
-  compass.title = 'Orientation: top is east, right is south';
-  compass.setAttribute('aria-label', 'Compass: top of the diagram is east, right is south');
-  for (const [col, row, ch] of [[2, 1, 'E'], [1, 2, 'N'], [3, 2, 'S'], [2, 3, 'W']]) {
-    const s = document.createElement('span');
-    s.style.gridColumn = col; s.style.gridRow = row;
-    s.textContent = ch;
-    compass.appendChild(s);
-  }
-  const dot = document.createElement('span');
-  dot.className = 'dot';
-  dot.style.gridColumn = 2; dot.style.gridRow = 2;
-  compass.appendChild(dot);
-  box.appendChild(compass);
+  box.appendChild(buildCompass());
 
   const placed = new Set();
   for (const strip of ROOF) {
@@ -1350,6 +1461,7 @@ $('forget-btn').addEventListener('click', () => {
   fail('Key removed from this browser. Reopen the full bookmarked link to view the dashboard again.');
 });
 
+initTips();
 start();
 })();
 </script>
