@@ -329,27 +329,14 @@ svg.chart text { font-variant-numeric: tabular-nums; }
 }
 .toggle-table:hover { color: var(--text-primary); background: var(--page); }
 
-/* --- filmstrip --------------------------------------------------------- */
-.strip-scroll { overflow-x: auto; }
-.strip {
-  display: grid; grid-template-columns: repeat(14, minmax(54px, 1fr));
-  gap: 8px; min-width: 700px;
+/* --- 14-day bars -------------------------------------------------------- */
+.strip-nav { display: flex; align-items: center; gap: 6px; }
+button.ghost.nav {
+  font-family: 'IBM Plex Sans', sans-serif; font-size: 15px; line-height: 1;
+  padding: 3px 10px 5px;
 }
-.day { text-align: center; }
-.day svg { display: block; width: 100%; height: auto; }
-.day .d {
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
-  color: var(--text-muted); margin-top: 5px; white-space: nowrap;
-}
-.day .v {
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
-  color: var(--text-secondary); white-space: nowrap;
-}
-.day.today .d { color: var(--text-primary); font-weight: 500; }
-.day.today .d::before {
-  content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
-  background: var(--sun); margin-right: 4px; vertical-align: 1px;
-}
+button.ghost.nav:disabled { opacity: 0.35; cursor: default; }
+button.ghost.nav:disabled:hover { background: transparent; color: var(--text-secondary); }
 
 /* --- array ------------------------------------------------------------- */
 .roof-scroll { overflow-x: auto; }
@@ -430,15 +417,6 @@ td.exp { color: var(--good-text); }
 /* estimated (imputed) days: never allowed to look measured */
 td.est { color: var(--text-muted); font-style: italic; }
 td.exp.est { color: color-mix(in srgb, var(--good-text) 60%, var(--text-muted)); }
-.day.est svg {
-  border-radius: 3px;
-  background: repeating-linear-gradient(45deg, transparent, transparent 3px,
-    color-mix(in srgb, var(--text-muted) 14%, transparent) 3px,
-    color-mix(in srgb, var(--text-muted) 14%, transparent) 4px);
-  outline: 1px dashed var(--axis);
-  outline-offset: -1px;
-}
-.day.est .v, .day.est .d { color: var(--text-muted); font-style: italic; }
 
 /* --- alerts ------------------------------------------------------------ */
 .alert-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
@@ -552,12 +530,23 @@ footer.colophon {
 
     <section class="card">
       <div class="card-head">
-        <h2 class="eyebrow">Last 14 days</h2>
-        <p class="sub">One frame per day, on a shared scale.</p>
+        <h2 class="eyebrow">14 days</h2>
+        <p class="sub" id="strip-sub"></p>
         <span class="push"></span>
-        <div class="legend" id="strip-legend"></div>
+        <div class="strip-nav">
+          <button class="ghost nav" id="strip-prev" type="button"
+                  aria-label="Show the previous day" data-tip="Slide the window one day earlier">‹</button>
+          <button class="ghost nav" id="strip-next" type="button"
+                  aria-label="Show the next day" data-tip="Slide the window one day later">›</button>
+          <button class="toggle-table" data-toggle="strip-table">Table</button>
+        </div>
       </div>
-      <div class="strip-scroll"><div class="strip" id="strip"></div></div>
+      <div class="chart-wrap">
+        <svg class="chart" id="strip-chart" viewBox="0 0 1000 440" role="img"
+             aria-label="Daily production, consumption and net grid over a 14-day window"></svg>
+        <div class="tooltip" id="strip-tip"></div>
+      </div>
+      <div class="table-wrap hidden" id="strip-table" style="margin-top:12px"></div>
     </section>
 
     <div class="two-col">
@@ -1054,121 +1043,183 @@ function renderReadouts(live, peak, loadPeak, netPeak) {
       title: `Grid flow now vs the biggest of the last ${days} days (${fmt(netPeak, 1)} kW) — right of center imports, left exports` }));
 }
 
-/* ---------- filmstrip: last 14 days ------------------------------------- */
-function renderStrip(intraday, history, live) {
-  const box = $('strip');
-  clear(box);
-  const rows = intraday.rows || [];
-  if (!rows.length) return;
+/* ---------- 14-day bars --------------------------------------------------
+   Three per-day bar charts sharing one day axis - one series each, so every
+   bar can carry its own value without a legend or a hover. The window slides
+   a day at a time over the whole daily history, not just the intraday window.
+   Bars are drawn from daily totals, so a day is one bar, not a curve.        */
+let STRIP_OFFSET = 0;      // days back from the newest day with data
+let stripWired = false;
 
-  const PROD = css('--prod'), CONS = css('--cons'), NET = css('--net');
-  legendInto('strip-legend', [['Production', PROD], ['Consumption', CONS], ['Net grid', NET]]);
+function wireStripNav() {
+  if (stripWired) return;
+  stripWired = true;
+  const step = n => () => {
+    STRIP_OFFSET += n;
+    renderStrip(DATA.history || {}, DATA.live || {});
+  };
+  $('strip-prev').addEventListener('click', step(1));
+  $('strip-next').addEventListener('click', step(-1));
+}
 
-  const byDay = new Map();
-  for (const r of rows) {
-    const k = dayKey(r[0]);
-    if (!byDay.has(k)) byDay.set(k, []);
-    byDay.get(k).push(r);
+function renderStrip(history, live) {
+  wireStripNav();
+  const svg = $('strip-chart');
+  clear(svg);
+
+  const all = dailySeries(history);
+  if (live.today && !all.some(d => d.date === live.today.date)) {
+    all.push({ ...live.today, partial: true });
   }
-  // The last 14 calendar days ending today, so a collection outage shows as
-  // an honest empty frame instead of silently compressing the strip.
-  const last = new Date(rows[rows.length - 1][0] * 1000);
-  last.setHours(0, 0, 0, 0);
-  const days = [];
+  all.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  if (!all.length) { $('strip-sub').textContent = 'no data yet'; return; }
+
+  const byDate = new Map(all.map(d => [d.date, d]));
+  const dayMs = 86400000;
+  const parse = s => new Date(s + 'T12:00:00');
+  const newest = parse(all[all.length - 1].date);
+  const oldest = parse(all[0].date);
+  const maxOffset = Math.max(0, Math.round((newest - oldest) / dayMs) - 13);
+  STRIP_OFFSET = Math.min(Math.max(0, STRIP_OFFSET), maxOffset);
+
+  const end = new Date(newest.getTime() - STRIP_OFFSET * dayMs);
+  const window14 = [];
   for (let i = 13; i >= 0; i--) {
-    const d = new Date(last);
-    d.setDate(d.getDate() - i);
-    days.push(d);
+    const d = new Date(end.getTime() - i * dayMs);
+    const key = isoLocal(d);
+    window14.push({ d, key, row: byDate.get(key) });
   }
-  const todayStr = dayKey(last.getTime() / 1000 + 43200);
 
-  // One signed scale across all fourteen frames, so heights compare day to
-  // day and a frame's dip below its zero line is export.
-  let ylo = 0, yhi = 0.5;
-  for (const r of rows) for (const k of [1, 2, 3]) { ylo = Math.min(ylo, r[k]); yhi = Math.max(yhi, r[k]); }
+  $('strip-prev').disabled = STRIP_OFFSET >= maxOffset;
+  $('strip-next').disabled = STRIP_OFFSET <= 0;
+  const fmtDay = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  $('strip-sub').textContent = `${fmtDay(window14[0].d)} – ${fmtDay(end)}`
+    + (STRIP_OFFSET ? ` · ${STRIP_OFFSET} day${STRIP_OFFSET === 1 ? '' : 's'} back` : '');
 
-  // Totals only for sound ~24h days (estimated days count as whole days); a
-  // partial row's lump total would masquerade as a single day's production.
-  const totals = new Map(dailySeries(history)
-    .filter(d => d.hours !== null && d.hours !== undefined && d.hours >= 23 && d.hours <= 25)
-    .map(d => [d.date, d]));
-  if (live.today) totals.set(live.today.date, live.today);
+  const PROD = css('--prod'), CONS = css('--cons'), IMP = css('--imp'), EXP = css('--exp');
+  const W = 1000, padL = 54, padR = 14;
+  const band = (W - padL - padR) / 14;
+  const barW = Math.min(26, band - 16);
+  const PANES = [
+    { key: 'pv_kwh', title: 'PRODUCTION · kWh', top: 26, bot: 116, color: () => PROD },
+    { key: 'consumption_kwh', title: 'CONSUMPTION · kWh', top: 168, bot: 258, color: () => CONS },
+    { key: 'net_kwh', title: 'NET GRID · kWh — above zero imported, below exported',
+      top: 310, bot: 400, color: v => (v >= 0 ? IMP : EXP), signed: true },
+  ];
 
-  for (const d0 of days) {
-    const day = dayKey(d0.getTime() / 1000 + 43200);
-    const samples = byDay.get(day);
-    const t0 = d0.getTime() / 1000;
-    // taller than it is wide-ish: three series plus a zero line need the room
-    const W = 60, H = 52;
-    const X = t => (t - t0) / 86400 * W;
-    const Y = v => 3 + (1 - (v - ylo) / (yhi - ylo)) * (H - 6);
+  for (const p of PANES) {
+    const vals = window14.map(w => (w.row ? w.row[p.key] : null)).filter(v => v !== null && v !== undefined);
+    let lo = 0, hi = 0.5;
+    for (const v of vals) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    if (!p.signed) lo = 0;
+    // headroom so the value labels clear the bar ends
+    const pad = (hi - lo) * 0.16 || 1;
+    const step = niceStep((hi - lo) / 3);
+    const sLo = Math.floor((lo - (p.signed ? pad : 0)) / step) * step;
+    const sHi = Math.ceil((hi + pad) / step) * step;
+    const Y = v => p.top + (1 - (v - sLo) / (sHi - sLo || 1)) * (p.bot - p.top);
 
-    const t = totals.get(day);
-    const estimated = !samples && t && t.imputed;
-    const cell = document.createElement('div');
-    cell.className = 'day' + (day === todayStr ? ' today' : '') + (estimated ? ' est' : '');
-    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, 'aria-label': `power on ${day}` });
-    /* No intraday samples exist for an estimated day - only a daily total - so
-       the frame shows a flat band at that day's mean production rather than a
-       fabricated curve, hatched and dashed to read as "modelled". */
-    if (estimated) {
-      const meanKw = (t.pv_kwh || 0) / 24;
-      svg.appendChild(el('rect', { x: 0, y: Y(meanKw), width: W, height: Math.max(1, Y(0) - Y(meanKw)),
-        fill: PROD, 'fill-opacity': 0.10 }));
-      svg.appendChild(el('line', { x1: 0, x2: W, y1: Y(meanKw), y2: Y(meanKw),
-        stroke: PROD, 'stroke-width': 1.3, 'stroke-dasharray': '3 2' }));
-      const meanNet = (t.net_kwh || 0) / 24;
-      svg.appendChild(el('line', { x1: 0, x2: W, y1: Y(meanNet), y2: Y(meanNet),
-        stroke: NET, 'stroke-width': 1.3, 'stroke-dasharray': '3 2' }));
-      const meanCons = (t.consumption_kwh || 0) / 24;
-      svg.appendChild(el('line', { x1: 0, x2: W, y1: Y(meanCons), y2: Y(meanCons),
-        stroke: CONS, 'stroke-width': 1.3, 'stroke-dasharray': '3 2' }));
+    for (let i = 0; ; i++) {
+      const v = sLo + i * step;
+      if (v > sHi + 1e-9) break;
+      const zero = Math.abs(v) < 1e-9;
+      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
+        stroke: zero ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
+      text(svg, padL - 8, Y(v) + 3.5, fmt(v, 0), { 'text-anchor': 'end' });
     }
-    svg.appendChild(el('line', { x1: 0, x2: W, y1: Y(0), y2: Y(0),
-      stroke: css('--axis'), 'stroke-width': 0.8 }));
-    if (samples) {
-      const pts = k => samples.map((r, i) =>
-        `${i ? 'L' : 'M'} ${X(r[0]).toFixed(1)} ${Y(r[k]).toFixed(1)}`).join(' ');
-      // production keeps the wash - it is the series the strip is scanned for
-      svg.appendChild(el('path', {
-        d: `${pts(1)} L ${X(samples[samples.length - 1][0]).toFixed(1)} ${Y(0)} `
-           + `L ${X(samples[0][0]).toFixed(1)} ${Y(0)} Z`,
-        fill: PROD, 'fill-opacity': 0.14 }));
-      for (const [k, color] of [[3, NET], [2, CONS], [1, PROD]]) {
-        svg.appendChild(el('path', { d: pts(k), fill: 'none', stroke: color,
-          'stroke-width': 1.3, 'stroke-linejoin': 'round' }));
-      }
-    }
-    cell.appendChild(svg);
+    text(svg, padL, p.top - 9, p.title, { 'text-anchor': 'start', 'font-size': 9.5,
+      fill: css('--text-muted'), 'letter-spacing': '0.08em' });
 
-    const lab = document.createElement('div');
-    lab.className = 'd';
-    lab.textContent = d0.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2)
-      + ' ' + d0.getDate();
-    cell.appendChild(lab);
+    window14.forEach((w, i) => {
+      const cx = padL + band * i + band / 2;
+      if (!w.row) return;
+      const v = w.row[p.key];
+      if (v === null || v === undefined) return;
+      const y0 = Y(0), y = Y(v);
+      const h = Math.max(1, Math.abs(y - y0));
+      const color = p.color(v);
+      const est = !!w.row.imputed;
+      const partial = !est && !(w.row.hours >= 23 && w.row.hours <= 25);
+      const bar = el('path', {
+        d: barPath(cx - barW / 2, y0, barW, h, v >= 0 ? 1 : -1),
+        fill: color,
+        'fill-opacity': est ? 0.3 : partial ? 0.55 : 1,
+      });
+      if (est) { bar.setAttribute('stroke', color); bar.setAttribute('stroke-width', 1);
+        bar.setAttribute('stroke-dasharray', '3 2'); }
+      svg.appendChild(bar);
 
-    const val = document.createElement('div');
-    val.className = 'v';
-    val.textContent = t === undefined ? '—'
-      : (estimated ? '≈' : '') + fmt(t.pv_kwh, t.pv_kwh >= 100 ? 0 : 1);
-    cell.appendChild(val);
-
-    const row = (name, color, v, unit) =>
-      `<div class="row"><span class="sw" style="background:${color}"></span>${name}`
-      + `<span class="num">${v === undefined || v === null ? '—' : fmt(v, 1)} ${unit}</span></div>`;
-    const totalsTip = row('Production', PROD, t && t.pv_kwh, 'kWh')
-      + row('Consumption', CONS, t && t.consumption_kwh, 'kWh')
-      + row('Net grid', NET, t && t.net_kwh, 'kWh');
-    cell.dataset.tip = `<b>${esc(d0.toLocaleDateString(undefined,
-        { weekday: 'short', month: 'short', day: 'numeric' }))}</b>`
-      + (samples
-        ? totalsTip + (t === undefined ? '<div class="row">no whole-day total yet</div>' : '')
-        : estimated
-          ? totalsTip + '<div style="color:var(--text-muted);margin-top:3px">estimated — the '
-            + 'outage total split across days, not measured</div>'
-          : '<div class="row">no samples — collection was down</div>');
-    box.appendChild(cell);
+      // the value, always on: above a bar that grows up, below one that grows down
+      const label = (est ? '≈' : '') + fmt(v, Math.abs(v) >= 100 ? 0 : 1);
+      text(svg, cx, v >= 0 ? y - 5 : y + 11, label, {
+        'text-anchor': 'middle', 'font-size': 9.5,
+        fill: est ? css('--text-muted') : css('--text-secondary'),
+        'font-style': est ? 'italic' : 'normal' });
+    });
   }
+
+  // day labels once, under the bottom pane
+  const bottom = PANES[PANES.length - 1].bot;
+  window14.forEach((w, i) => {
+    const cx = padL + band * i + band / 2;
+    const isToday = w.row && w.row.partial && w.key === isoLocal(newest);
+    text(svg, cx, bottom + 18,
+      w.d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2), {
+        'text-anchor': 'middle', 'font-size': 9.5,
+        fill: w.row ? css('--text-secondary') : css('--text-muted') });
+    text(svg, cx, bottom + 30, String(w.d.getDate()), {
+      'text-anchor': 'middle', 'font-size': 10,
+      fill: w.row ? css('--text-primary') : css('--text-muted'),
+      'font-weight': isToday ? 600 : 400 });
+    if (!w.row) text(svg, cx, PANES[0].bot - 4, '—', { 'text-anchor': 'middle', 'font-size': 10 });
+  });
+
+  // one hover target per day column, spanning all three panes
+  const tip = $('strip-tip');
+  window14.forEach((w, i) => {
+    const x = padL + band * i;
+    const hit = el('rect', { x, y: PANES[0].top - 14, width: band,
+      height: bottom - PANES[0].top + 14, fill: 'transparent' });
+    hit.addEventListener('mouseenter', () => {
+      const box = svg.getBoundingClientRect();
+      const r = w.row;
+      const line = (n, c, v) => `<div class="row"><span class="sw" style="background:${c}"></span>${n}`
+        + `<span class="num">${v === null || v === undefined ? '—' : fmt(v, 1)} kWh</span></div>`;
+      tip.innerHTML = `<b>${esc(w.d.toLocaleDateString(undefined,
+          { weekday: 'long', month: 'short', day: 'numeric' }))}</b>`
+        + (r
+          ? line('Production', PROD, r.pv_kwh) + line('Consumption', CONS, r.consumption_kwh)
+            + line('Net grid', r.net_kwh >= 0 ? IMP : EXP, r.net_kwh)
+            + (r.imputed
+              ? '<div style="color:var(--text-muted);margin-top:3px">estimated — outage total '
+                + 'split across days, not measured</div>'
+              : !(r.hours >= 23 && r.hours <= 25)
+                ? `<div style="color:var(--text-muted);margin-top:3px">partial day`
+                  + `${r.hours ? ` — ${fmt(r.hours, 1)} h covered` : ''}</div>`
+                : '')
+          : '<div class="row">no data — collection was down</div>');
+      tip.style.opacity = 1;
+      tip.style.left = `${(x + band / 2) / W * box.width}px`;
+      tip.style.top = `${PANES[0].top / 440 * box.height}px`;
+    });
+    hit.addEventListener('mouseleave', () => tip.style.opacity = 0);
+    svg.appendChild(hit);
+  });
+
+  buildTable($('strip-table'),
+    ['Date', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Note'],
+    window14.slice().reverse().map(w => {
+      const r = w.row;
+      if (!r) return [w.key, '—', '—', '—', { v: 'no data', cls: 'alert' }];
+      const note = r.imputed ? 'estimated'
+        : !(r.hours >= 23 && r.hours <= 25) ? 'partial day' : '';
+      const cls = r.imputed ? 'est' : '';
+      return [
+        { v: w.key, cls }, { v: fmt(r.pv_kwh, 2), cls }, { v: fmt(r.consumption_kwh, 2), cls },
+        { v: fmt(r.net_kwh, 2), cls: (r.net_kwh < 0 ? 'exp' : '') + (cls ? ' est' : '') },
+        { v: note, cls: 'alert' + (cls ? ' est' : '') },
+      ];
+    }));
 }
 
 /* ---------- monthly grouped bars ---------------------------------------- */
@@ -2042,7 +2093,7 @@ function renderAll() {
     ? 'live' : `stale ${fmt((live.age_minutes || 0) / 60, 1)}h`;
 
   renderHero(DATA.intraday || { rows: [] }, live);
-  renderStrip(DATA.intraday || { rows: [] }, DATA.history || {}, live);
+  renderStrip(DATA.history || {}, live);
   renderMonthly(DATA.history || { months: [] });
   renderNetGrid(DATA.history || { months: [] });
   renderYTD(DATA.history || { days: [] });
