@@ -264,6 +264,37 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
 .tile .foot { font-size: 12px; color: var(--text-muted); margin-top: auto; padding-top: 7px; }
 .tile .foot b { font-weight: 500; color: var(--text-secondary); }
 
+/* --- range picker ------------------------------------------------------- */
+.range-controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-bottom: 18px;
+}
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.preset {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-secondary); background: transparent;
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 4px 11px; cursor: pointer;
+}
+.preset:hover { background: var(--page); color: var(--text-primary); }
+.preset[aria-pressed="true"] {
+  background: var(--sun); border-color: var(--sun); color: #0b0b0b; font-weight: 600;
+}
+.range-dates {
+  display: flex; align-items: center; gap: 8px; margin-left: auto;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+  letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted);
+}
+.range-dates input {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+  color: var(--text-primary); background: var(--page);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 7px;
+}
+.range-note {
+  font-size: 11.5px; color: var(--text-muted); margin: 14px 0 0; line-height: 1.65;
+}
+@media (max-width: 680px) { .range-dates { margin-left: 0; } }
+
 /* --- charts ------------------------------------------------------------ */
 .chart-wrap { position: relative; }
 svg.chart { display: block; width: 100%; height: auto; overflow: visible;
@@ -538,6 +569,24 @@ footer.colophon {
         <div class="tooltip" id="ytd-tip"></div>
       </div>
       <div class="table-wrap hidden" id="ytd-table" style="margin-top:12px"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2 class="eyebrow">Range totals</h2>
+        <p class="sub" id="range-sub"></p>
+      </div>
+      <div class="range-controls">
+        <div class="presets" id="range-presets"></div>
+        <div class="range-dates">
+          <label for="range-from">from</label>
+          <input type="date" id="range-from">
+          <label for="range-to">to</label>
+          <input type="date" id="range-to">
+        </div>
+      </div>
+      <div class="readouts" id="range-totals"></div>
+      <p class="range-note" id="range-note"></p>
     </section>
 
     <section class="card">
@@ -1464,6 +1513,148 @@ function renderYTD(history) {
     ]));
 }
 
+/* ---------- range totals -------------------------------------------------
+   Sums whole days out of the daily history for a chosen window. Today comes
+   from the live block instead, because the nightly summary has not written it
+   yet - it is a partial day and the note says so.                          */
+const isoLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-`
+  + `${String(d.getDate()).padStart(2, '0')}`;
+const shiftDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+
+const PRESETS = [
+  { key: 'last7', label: '7 days', from: t => shiftDays(t, -6) },
+  { key: 'last30', label: '30 days', from: t => shiftDays(t, -29) },
+  { key: 'last90', label: '90 days', from: t => shiftDays(t, -89) },
+  { key: 'mtd', label: 'month', from: t => new Date(t.getFullYear(), t.getMonth(), 1) },
+  { key: 'ytd', label: 'year', from: t => new Date(t.getFullYear(), 0, 1) },
+  { key: 'all', label: 'all', from: () => null },
+];
+
+let RANGE = { preset: 'last30', from: null, to: null };
+let rangeWired = false;
+
+function rangeWindow(days) {
+  const today = new Date();
+  const todayStr = isoLocal(today);
+  if (RANGE.preset) {
+    const p = PRESETS.find(x => x.key === RANGE.preset) || PRESETS[1];
+    const start = p.from(today);
+    return [start ? isoLocal(start) : (days.length ? days[0].date : todayStr), todayStr];
+  }
+  return [RANGE.from, RANGE.to];
+}
+
+function wireRangeControls() {
+  if (rangeWired) return;
+  rangeWired = true;
+  const box = $('range-presets');
+  for (const p of PRESETS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'preset';
+    b.dataset.preset = p.key;
+    b.textContent = p.label;
+    b.addEventListener('click', () => {
+      RANGE = { preset: p.key, from: null, to: null };
+      renderRange(DATA.history || {}, DATA.live || {});
+    });
+    box.appendChild(b);
+  }
+  const onDate = () => {
+    const from = $('range-from').value, to = $('range-to').value;
+    if (!from || !to) return;
+    // tolerate the two inputs being set in either order
+    RANGE = { preset: null, from: from <= to ? from : to, to: from <= to ? to : from };
+    renderRange(DATA.history || {}, DATA.live || {});
+  };
+  $('range-from').addEventListener('change', onDate);
+  $('range-to').addEventListener('change', onDate);
+}
+
+function renderRange(history, live) {
+  wireRangeControls();
+  const days = (history.days || []).slice();
+  if (live.today && !days.some(d => d.date === live.today.date)) {
+    days.push({ date: live.today.date, pv_kwh: live.today.pv_kwh,
+      consumption_kwh: live.today.consumption_kwh, net_kwh: live.today.net_kwh,
+      hours: live.today.hours, alerts: '', partial: true });
+  }
+  if (!days.length) { $('range-sub').textContent = 'no data yet'; return; }
+
+  const [from, to] = rangeWindow(days);
+  const inRange = days.filter(d => d.date >= from && d.date <= to);
+
+  for (const b of $('range-presets').children) {
+    b.setAttribute('aria-pressed', String(b.dataset.preset === RANGE.preset));
+  }
+  if (document.activeElement !== $('range-from')) $('range-from').value = from;
+  if (document.activeElement !== $('range-to')) $('range-to').value = to;
+
+  const sum = k => inRange.reduce((a, d) => a + (d[k] || 0), 0);
+  const pv = sum('pv_kwh'), cons = sum('consumption_kwh'), net = sum('net_kwh');
+  const n = inRange.length;
+
+  /* Per-day averages divide by CALENDAR days spanned, not by row count. The
+     2026-07-31 catch-up row holds 16 days of energy on one date, so dividing
+     by rows would report roughly double the real daily rate. */
+  const dayNum = s => Date.parse(s + 'T00:00:00') / 86400000;
+  const spanDays = n
+    ? Math.round(dayNum(inRange[n - 1].date) - dayNum(inRange[0].date)) + 1
+    : 0;
+
+  // spanDays is the stretch the data actually covers, which can be shorter
+  // than the window asked for (the window may reach back before collection
+  // started, or into a gap), so it is labelled as such.
+  $('range-sub').textContent = n
+    ? `${from} to ${to} — ${spanDays} day${spanDays === 1 ? '' : 's'} covered`
+    : `${from} to ${to} — no data in this range`;
+
+  const PROD = css('--prod'), CONS = css('--cons');
+  const box = $('range-totals');
+  clear(box);
+  const kfmt = (v, d = 0) => (Math.round(v * 10 ** d) / 10 ** d || 0).toLocaleString('en-US',
+    { minimumFractionDigits: d, maximumFractionDigits: d });
+  const tile = (label, color, value, foot) => {
+    const el2 = document.createElement('div');
+    el2.className = 'tile';
+    el2.innerHTML =
+      `<div class="label"><span class="key" style="background:${color}"></span>${label}</div>` +
+      `<div class="value">${kfmt(value)}<span class="unit"> kWh</span></div>` +
+      `<div class="foot">${foot}</div>`;
+    return el2;
+  };
+  const perDay = v => spanDays ? `${kfmt(v / spanDays, 1)} kWh/day` : '—';
+  box.appendChild(tile('Produced', PROD, pv, perDay(pv)));
+  box.appendChild(tile('Used', CONS, cons, perDay(cons)));
+  const exporting = net < 0;
+  box.appendChild(tile(exporting ? 'Exported' : 'Imported',
+    exporting ? css('--exp') : css('--imp'), Math.abs(net),
+    spanDays ? `net of ${kfmt(Math.abs(net) / spanDays, 1)} kWh/day ${exporting ? 'out' : 'in'}` : '—'));
+
+  // Caveats: the same ones the monthly rollups carry, but a hand-picked window
+  // can land on them squarely, so they are spelled out rather than assumed.
+  const notes = [];
+  if (n && n !== spanDays) {
+    notes.push(`${n} summary row${n === 1 ? '' : 's'} cover${n === 1 ? 's' : ''} these ${spanDays} days, `
+      + 'so per-day figures are averaged over the calendar span');
+  }
+  const partial = inRange.filter(d => d.partial);
+  const lumps = inRange.filter(d => !d.partial && (d.hours === null || d.hours === undefined
+    || d.hours < 23 || d.hours > 25));
+  const excluded = inRange.filter(d => (d.alerts || '').startsWith('⚠️ EXCLUDED'));
+  if (partial.length) notes.push('today is still in progress');
+  if (lumps.length) {
+    notes.push(`${lumps.length} row${lumps.length === 1 ? '' : 's'} cover${lumps.length === 1 ? 's' : ''} `
+      + `more or less than a day (${lumps.map(d => d.date).join(', ')}) — an outage catch-up total `
+      + 'lands entirely on the day it was recorded');
+  }
+  if (excluded.length) {
+    notes.push(`${excluded.length} day${excluded.length === 1 ? '' : 's'} zeroed by a meter counter `
+      + `reset (${excluded.map(d => d.date).join(', ')}) and cannot be recovered`);
+  }
+  $('range-note').textContent = notes.length ? `Note: ${notes.join('. ')}.` : '';
+}
+
 /* ---------- the array ---------------------------------------------------
    Each microinverter drawn as the panel it sits under, placed as on the
    installer's as-built drawing: strings 1 and 2 on one roof face (string 2
@@ -1740,6 +1931,7 @@ function renderAll() {
   renderMonthly(DATA.history || { months: [] });
   renderNetGrid(DATA.history || { months: [] });
   renderYTD(DATA.history || { days: [] });
+  renderRange(DATA.history || { days: [] }, live);
   renderArray(live);
   renderSystemNotes(live);
   renderMeters(live);
