@@ -522,8 +522,28 @@ footer.colophon {
 
     <section class="card">
       <div class="card-head">
+        <h2 class="eyebrow">Range totals</h2>
+        <p class="sub" id="range-sub"></p>
+      </div>
+      <div class="range-controls">
+        <div class="presets" id="range-presets"></div>
+        <div class="range-dates">
+          <label for="range-from">from</label>
+          <input type="date" id="range-from">
+          <label for="range-to">to</label>
+          <input type="date" id="range-to">
+        </div>
+      </div>
+      <div class="readouts" id="range-totals"></div>
+      <p class="range-note" id="range-note"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
         <h2 class="eyebrow">Last 14 days</h2>
-        <p class="sub">Production, one frame per day, on a shared scale.</p>
+        <p class="sub">One frame per day, on a shared scale.</p>
+        <span class="push"></span>
+        <div class="legend" id="strip-legend"></div>
       </div>
       <div class="strip-scroll"><div class="strip" id="strip"></div></div>
     </section>
@@ -569,24 +589,6 @@ footer.colophon {
         <div class="tooltip" id="ytd-tip"></div>
       </div>
       <div class="table-wrap hidden" id="ytd-table" style="margin-top:12px"></div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h2 class="eyebrow">Range totals</h2>
-        <p class="sub" id="range-sub"></p>
-      </div>
-      <div class="range-controls">
-        <div class="presets" id="range-presets"></div>
-        <div class="range-dates">
-          <label for="range-from">from</label>
-          <input type="date" id="range-from">
-          <label for="range-to">to</label>
-          <input type="date" id="range-to">
-        </div>
-      </div>
-      <div class="readouts" id="range-totals"></div>
-      <p class="range-note" id="range-note"></p>
     </section>
 
     <section class="card">
@@ -1047,6 +1049,9 @@ function renderStrip(intraday, history, live) {
   const rows = intraday.rows || [];
   if (!rows.length) return;
 
+  const PROD = css('--prod'), CONS = css('--cons'), NET = css('--net');
+  legendInto('strip-legend', [['Production', PROD], ['Consumption', CONS], ['Net grid', NET]]);
+
   const byDay = new Map();
   for (const r of rows) {
     const k = dayKey(r[0]);
@@ -1064,35 +1069,45 @@ function renderStrip(intraday, history, live) {
     days.push(d);
   }
   const todayStr = dayKey(last.getTime() / 1000 + 43200);
-  const ymax = Math.max(0.5, ...rows.map(r => r[1]));
+
+  // One signed scale across all fourteen frames, so heights compare day to
+  // day and a frame's dip below its zero line is export.
+  let ylo = 0, yhi = 0.5;
+  for (const r of rows) for (const k of [1, 2, 3]) { ylo = Math.min(ylo, r[k]); yhi = Math.max(yhi, r[k]); }
+
   // Totals only for sound ~24h days; a partial or catch-up row's lump total
   // would masquerade as a single day's production.
   const totals = new Map((history.days || [])
     .filter(d => d.hours !== null && d.hours !== undefined && d.hours >= 23 && d.hours <= 25)
-    .map(d => [d.date, d.pv_kwh]));
-  if (live.today) totals.set(live.today.date, live.today.pv_kwh);
+    .map(d => [d.date, d]));
+  if (live.today) totals.set(live.today.date, live.today);
 
-  const PROD = css('--prod');
   for (const d0 of days) {
     const day = dayKey(d0.getTime() / 1000 + 43200);
     const samples = byDay.get(day);
     const t0 = d0.getTime() / 1000;
-    const W = 60, H = 40;
+    // taller than it is wide-ish: three series plus a zero line need the room
+    const W = 60, H = 52;
     const X = t => (t - t0) / 86400 * W;
-    const Y = v => 2 + (1 - v / ymax) * (H - 4);
+    const Y = v => 3 + (1 - (v - ylo) / (yhi - ylo)) * (H - 6);
 
     const cell = document.createElement('div');
     cell.className = 'day' + (day === todayStr ? ' today' : '');
-    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, 'aria-label': `production on ${day}` });
-    svg.appendChild(el('line', { x1: 0, x2: W, y1: H - 2, y2: H - 2, stroke: css('--grid'), 'stroke-width': 1 }));
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, 'aria-label': `power on ${day}` });
+    svg.appendChild(el('line', { x1: 0, x2: W, y1: Y(0), y2: Y(0),
+      stroke: css('--axis'), 'stroke-width': 0.8 }));
     if (samples) {
-      const pts = samples.map((r, i) => `${i ? 'L' : 'M'} ${X(r[0]).toFixed(1)} ${Y(r[1]).toFixed(1)}`).join(' ');
-      const lastX = X(samples[samples.length - 1][0]).toFixed(1);
+      const pts = k => samples.map((r, i) =>
+        `${i ? 'L' : 'M'} ${X(r[0]).toFixed(1)} ${Y(r[k]).toFixed(1)}`).join(' ');
+      // production keeps the wash - it is the series the strip is scanned for
       svg.appendChild(el('path', {
-        d: `${pts} L ${lastX} ${H - 2} L ${X(samples[0][0]).toFixed(1)} ${H - 2} Z`,
+        d: `${pts(1)} L ${X(samples[samples.length - 1][0]).toFixed(1)} ${Y(0)} `
+           + `L ${X(samples[0][0]).toFixed(1)} ${Y(0)} Z`,
         fill: PROD, 'fill-opacity': 0.14 }));
-      svg.appendChild(el('path', { d: pts, fill: 'none', stroke: PROD, 'stroke-width': 1.5,
-        'stroke-linejoin': 'round' }));
+      for (const [k, color] of [[3, NET], [2, CONS], [1, PROD]]) {
+        svg.appendChild(el('path', { d: pts(k), fill: 'none', stroke: color,
+          'stroke-width': 1.3, 'stroke-linejoin': 'round' }));
+      }
     }
     cell.appendChild(svg);
 
@@ -1101,15 +1116,24 @@ function renderStrip(intraday, history, live) {
     lab.textContent = d0.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2)
       + ' ' + d0.getDate();
     cell.appendChild(lab);
+
+    const t = totals.get(day);
     const val = document.createElement('div');
     val.className = 'v';
-    const kwh = totals.get(day);
-    val.textContent = kwh === undefined ? '—' : fmt(kwh, kwh >= 100 ? 0 : 1);
+    val.textContent = t === undefined ? '—' : fmt(t.pv_kwh, t.pv_kwh >= 100 ? 0 : 1);
     cell.appendChild(val);
-    cell.dataset.tip = `<b>${esc(d0.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }))}</b>`
+
+    const row = (name, color, v, unit) =>
+      `<div class="row"><span class="sw" style="background:${color}"></span>${name}`
+      + `<span class="num">${v === undefined ? '—' : fmt(v, 1)} ${unit}</span></div>`;
+    cell.dataset.tip = `<b>${esc(d0.toLocaleDateString(undefined,
+        { weekday: 'short', month: 'short', day: 'numeric' }))}</b>`
       + (samples
-        ? `<div class="row">produced<span class="num">${kwh === undefined ? '—' : fmt(kwh, 1)} kWh</span></div>`
-        : `<div class="row">no samples — collection was down</div>`);
+        ? row('Production', PROD, t && t.pv_kwh, 'kWh')
+          + row('Consumption', CONS, t && t.consumption_kwh, 'kWh')
+          + row('Net grid', NET, t && t.net_kwh, 'kWh')
+          + (t === undefined ? '<div class="row">no whole-day total yet</div>' : '')
+        : '<div class="row">no samples — collection was down</div>');
     box.appendChild(cell);
   }
 }
@@ -1522,6 +1546,7 @@ const isoLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,
 const shiftDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 
 const PRESETS = [
+  { key: 'today', label: 'today', from: t => t },
   { key: 'last7', label: '7 days', from: t => shiftDays(t, -6) },
   { key: 'last30', label: '30 days', from: t => shiftDays(t, -29) },
   { key: 'last90', label: '90 days', from: t => shiftDays(t, -89) },
@@ -1530,14 +1555,14 @@ const PRESETS = [
   { key: 'all', label: 'all', from: () => null },
 ];
 
-let RANGE = { preset: 'last30', from: null, to: null };
+let RANGE = { preset: 'today', from: null, to: null };
 let rangeWired = false;
 
 function rangeWindow(days) {
   const today = new Date();
   const todayStr = isoLocal(today);
   if (RANGE.preset) {
-    const p = PRESETS.find(x => x.key === RANGE.preset) || PRESETS[1];
+    const p = PRESETS.find(x => x.key === RANGE.preset) || PRESETS[0];
     const start = p.from(today);
     return [start ? isoLocal(start) : (days.length ? days[0].date : todayStr), todayStr];
   }
@@ -1619,17 +1644,23 @@ function renderRange(history, live) {
     el2.className = 'tile';
     el2.innerHTML =
       `<div class="label"><span class="key" style="background:${color}"></span>${label}</div>` +
-      `<div class="value">${kfmt(value)}<span class="unit"> kWh</span></div>` +
+      `<div class="value">${kfmt(value, value < 100 ? 1 : 0)}<span class="unit"> kWh</span></div>` +
       `<div class="foot">${foot}</div>`;
     return el2;
   };
-  const perDay = v => spanDays ? `${kfmt(v / spanDays, 1)} kWh/day` : '—';
+  // Over a single day the per-day average just restates the total, so the
+  // foot carries something useful instead.
+  const single = spanDays === 1;
+  const isToday = single && inRange[0].partial;
+  const perDay = v => !spanDays ? '—' : single ? (isToday ? 'so far today' : '')
+    : `${kfmt(v / spanDays, 1)} kWh/day`;
   box.appendChild(tile('Produced', PROD, pv, perDay(pv)));
   box.appendChild(tile('Used', CONS, cons, perDay(cons)));
   const exporting = net < 0;
   box.appendChild(tile(exporting ? 'Exported' : 'Imported',
     exporting ? css('--exp') : css('--imp'), Math.abs(net),
-    spanDays ? `net of ${kfmt(Math.abs(net) / spanDays, 1)} kWh/day ${exporting ? 'out' : 'in'}` : '—'));
+    !spanDays ? '—' : single ? (isToday ? 'so far today' : '')
+      : `net of ${kfmt(Math.abs(net) / spanDays, 1)} kWh/day ${exporting ? 'out' : 'in'}`));
 
   // Caveats: the same ones the monthly rollups carry, but a hand-picked window
   // can land on them squarely, so they are spelled out rather than assumed.
