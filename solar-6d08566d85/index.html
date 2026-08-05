@@ -427,6 +427,18 @@ td.alert {
   font-size: 10.5px; max-width: 340px;
 }
 td.exp { color: var(--good-text); }
+/* estimated (imputed) days: never allowed to look measured */
+td.est { color: var(--text-muted); font-style: italic; }
+td.exp.est { color: color-mix(in srgb, var(--good-text) 60%, var(--text-muted)); }
+.day.est svg {
+  border-radius: 3px;
+  background: repeating-linear-gradient(45deg, transparent, transparent 3px,
+    color-mix(in srgb, var(--text-muted) 14%, transparent) 3px,
+    color-mix(in srgb, var(--text-muted) 14%, transparent) 4px);
+  outline: 1px dashed var(--axis);
+  outline-offset: -1px;
+}
+.day.est .v, .day.est .d { color: var(--text-muted); font-style: italic; }
 
 /* --- alerts ------------------------------------------------------------ */
 .alert-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
@@ -1075,9 +1087,9 @@ function renderStrip(intraday, history, live) {
   let ylo = 0, yhi = 0.5;
   for (const r of rows) for (const k of [1, 2, 3]) { ylo = Math.min(ylo, r[k]); yhi = Math.max(yhi, r[k]); }
 
-  // Totals only for sound ~24h days; a partial or catch-up row's lump total
-  // would masquerade as a single day's production.
-  const totals = new Map((history.days || [])
+  // Totals only for sound ~24h days (estimated days count as whole days); a
+  // partial row's lump total would masquerade as a single day's production.
+  const totals = new Map(dailySeries(history)
     .filter(d => d.hours !== null && d.hours !== undefined && d.hours >= 23 && d.hours <= 25)
     .map(d => [d.date, d]));
   if (live.today) totals.set(live.today.date, live.today);
@@ -1091,9 +1103,27 @@ function renderStrip(intraday, history, live) {
     const X = t => (t - t0) / 86400 * W;
     const Y = v => 3 + (1 - (v - ylo) / (yhi - ylo)) * (H - 6);
 
+    const t = totals.get(day);
+    const estimated = !samples && t && t.imputed;
     const cell = document.createElement('div');
-    cell.className = 'day' + (day === todayStr ? ' today' : '');
+    cell.className = 'day' + (day === todayStr ? ' today' : '') + (estimated ? ' est' : '');
     const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, 'aria-label': `power on ${day}` });
+    /* No intraday samples exist for an estimated day - only a daily total - so
+       the frame shows a flat band at that day's mean production rather than a
+       fabricated curve, hatched and dashed to read as "modelled". */
+    if (estimated) {
+      const meanKw = (t.pv_kwh || 0) / 24;
+      svg.appendChild(el('rect', { x: 0, y: Y(meanKw), width: W, height: Math.max(1, Y(0) - Y(meanKw)),
+        fill: PROD, 'fill-opacity': 0.10 }));
+      svg.appendChild(el('line', { x1: 0, x2: W, y1: Y(meanKw), y2: Y(meanKw),
+        stroke: PROD, 'stroke-width': 1.3, 'stroke-dasharray': '3 2' }));
+      const meanNet = (t.net_kwh || 0) / 24;
+      svg.appendChild(el('line', { x1: 0, x2: W, y1: Y(meanNet), y2: Y(meanNet),
+        stroke: NET, 'stroke-width': 1.3, 'stroke-dasharray': '3 2' }));
+      const meanCons = (t.consumption_kwh || 0) / 24;
+      svg.appendChild(el('line', { x1: 0, x2: W, y1: Y(meanCons), y2: Y(meanCons),
+        stroke: CONS, 'stroke-width': 1.3, 'stroke-dasharray': '3 2' }));
+    }
     svg.appendChild(el('line', { x1: 0, x2: W, y1: Y(0), y2: Y(0),
       stroke: css('--axis'), 'stroke-width': 0.8 }));
     if (samples) {
@@ -1117,23 +1147,26 @@ function renderStrip(intraday, history, live) {
       + ' ' + d0.getDate();
     cell.appendChild(lab);
 
-    const t = totals.get(day);
     const val = document.createElement('div');
     val.className = 'v';
-    val.textContent = t === undefined ? '—' : fmt(t.pv_kwh, t.pv_kwh >= 100 ? 0 : 1);
+    val.textContent = t === undefined ? '—'
+      : (estimated ? '≈' : '') + fmt(t.pv_kwh, t.pv_kwh >= 100 ? 0 : 1);
     cell.appendChild(val);
 
     const row = (name, color, v, unit) =>
       `<div class="row"><span class="sw" style="background:${color}"></span>${name}`
-      + `<span class="num">${v === undefined ? '—' : fmt(v, 1)} ${unit}</span></div>`;
+      + `<span class="num">${v === undefined || v === null ? '—' : fmt(v, 1)} ${unit}</span></div>`;
+    const totalsTip = row('Production', PROD, t && t.pv_kwh, 'kWh')
+      + row('Consumption', CONS, t && t.consumption_kwh, 'kWh')
+      + row('Net grid', NET, t && t.net_kwh, 'kWh');
     cell.dataset.tip = `<b>${esc(d0.toLocaleDateString(undefined,
         { weekday: 'short', month: 'short', day: 'numeric' }))}</b>`
       + (samples
-        ? row('Production', PROD, t && t.pv_kwh, 'kWh')
-          + row('Consumption', CONS, t && t.consumption_kwh, 'kWh')
-          + row('Net grid', NET, t && t.net_kwh, 'kWh')
-          + (t === undefined ? '<div class="row">no whole-day total yet</div>' : '')
-        : '<div class="row">no samples — collection was down</div>');
+        ? totalsTip + (t === undefined ? '<div class="row">no whole-day total yet</div>' : '')
+        : estimated
+          ? totalsTip + '<div style="color:var(--text-muted);margin-top:3px">estimated — the '
+            + 'outage total split across days, not measured</div>'
+          : '<div class="row">no samples — collection was down</div>');
     box.appendChild(cell);
   }
 }
@@ -1434,20 +1467,22 @@ function renderYTD(history) {
   const PROD = css('--prod'), CONS = css('--cons'), NET = css('--net');
   legendInto('ytd-legend', [['Production', PROD], ['Consumption', CONS], ['Net grid', NET]]);
 
-  const allDays = history.days || [];
+  const allDays = dailySeries(history);
   if (!allDays.length) { $('ytd-sub').textContent = 'no data yet'; return; }
   const year = +allDays[allDays.length - 1].date.slice(0, 4);
   const days = allDays.filter(d => +d.date.slice(0, 4) === year);
   if (!days.length) return;
 
-  $('ytd-sub').textContent =
-    `Cumulative since Jan 1, ${year} — outage catch-up totals step on the day they were recorded.`;
+  const estCount = days.filter(d => d.imputed).length;
+  $('ytd-sub').textContent = `Cumulative since Jan 1, ${year}`
+    + (estCount ? ` — the dashed stretch is ${estCount} estimated days` : '');
 
   // running sums
   let p = 0, u = 0, n = 0;
   const rows = days.map(d => {
     p += d.pv_kwh || 0; u += d.consumption_kwh || 0; n += d.net_kwh || 0;
-    return { date: d.date, p: +p.toFixed(1), u: +u.toFixed(1), n: +n.toFixed(1) };
+    return { date: d.date, p: +p.toFixed(1), u: +u.toFixed(1), n: +n.toFixed(1),
+      imputed: !!d.imputed };
   });
 
   const W = 1000, H = 300, padL = 52, padR = 68, padT = 16, padB = 26;
@@ -1481,10 +1516,24 @@ function renderYTD(history) {
     { key: 'u', name: 'Consumption', color: CONS },
     { key: 'n', name: 'Net grid', color: NET },
   ];
+  /* Drawn in runs so the estimated stretch can be dashed: a segment is
+     estimated when the day it arrives at is. */
   for (const s of series) {
-    const d = rows.map((r, i) => `${i ? 'L' : 'M'} ${X(r.date).toFixed(1)} ${Y(r[s.key]).toFixed(1)}`).join(' ');
-    svg.appendChild(el('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2,
-      'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    let run = [rows[0]], runEst = !!rows[0].imputed;
+    const flush = () => {
+      if (run.length < 2) return;
+      const d = run.map((r, i) => `${i ? 'L' : 'M'} ${X(r.date).toFixed(1)} ${Y(r[s.key]).toFixed(1)}`).join(' ');
+      const attrs = { d, fill: 'none', stroke: s.color, 'stroke-width': 2,
+        'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
+      if (runEst) { attrs['stroke-dasharray'] = '4 3'; attrs.opacity = 0.85; }
+      svg.appendChild(el('path', attrs));
+    };
+    for (let i = 1; i < rows.length; i++) {
+      const est = !!rows[i].imputed;
+      if (est !== runEst) { run.push(rows[i]); flush(); run = [rows[i]]; runEst = est; }
+      else run.push(rows[i]);
+    }
+    flush();
   }
   // endpoint dots + current totals as direct labels
   const last = rows[rows.length - 1];
@@ -1541,6 +1590,28 @@ function renderYTD(history) {
    Sums whole days out of the daily history for a chosen window. Today comes
    from the live block instead, because the nightly summary has not written it
    yet - it is a partial day and the note says so.                          */
+/* The daily series everything with a per-day shape should use.
+
+   An outage leaves one catch-up row holding a whole span's energy on a single
+   date. impute-outage.py estimates how that span was distributed and, crucially,
+   its estimates sum to the catch-up row exactly - so swapping the row out for
+   them changes the shape and no total. Doing the swap in one place is what
+   keeps the two from ever being counted together. Estimated days carry
+   `imputed: true` and every view marks them. */
+function dailySeries(history) {
+  const days = (history.days || []).map(d => ({ ...d }));
+  const imputed = history.imputed || [];
+  if (!imputed.length) return days;
+  const replaced = new Set(imputed.map(i => i.from_row));
+  const out = days.filter(d => !replaced.has(d.date));
+  for (const i of imputed) {
+    out.push({ date: i.date, pv_kwh: i.pv_kwh, consumption_kwh: i.consumption_kwh,
+      net_kwh: i.net_kwh, hours: 24, alerts: '', imputed: true, method: i.method });
+  }
+  out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return out;
+}
+
 const isoLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-`
   + `${String(d.getDate()).padStart(2, '0')}`;
 const shiftDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -1598,7 +1669,7 @@ function wireRangeControls() {
 
 function renderRange(history, live) {
   wireRangeControls();
-  const days = (history.days || []).slice();
+  const days = dailySeries(history);
   if (live.today && !days.some(d => d.date === live.today.date)) {
     days.push({ date: live.today.date, pv_kwh: live.today.pv_kwh,
       consumption_kwh: live.today.consumption_kwh, net_kwh: live.today.net_kwh,
@@ -1665,6 +1736,12 @@ function renderRange(history, live) {
   // Caveats: the same ones the monthly rollups carry, but a hand-picked window
   // can land on them squarely, so they are spelled out rather than assumed.
   const notes = [];
+  const est = inRange.filter(d => d.imputed);
+  if (est.length) {
+    notes.push(`${est.length} day${est.length === 1 ? ' is an' : 's are'} estimated `
+      + `(${est[0].date} to ${est[est.length - 1].date}, no per-day data during the outage) — `
+      + 'the totals are measured, only their split across days is modelled');
+  }
   if (n && n !== spanDays) {
     notes.push(`${n} summary row${n === 1 ? '' : 's'} cover${n === 1 ? 's' : ''} these ${spanDays} days, `
       + 'so per-day figures are averaged over the calendar span');
@@ -1863,15 +1940,22 @@ function renderMeters(live) {
 }
 
 function renderHistory(history) {
-  const days = (history.days || []).slice().reverse();
-  $('history-sub').textContent = `${days.length} days on record — green means the grid owed you`;
+  const days = dailySeries(history).reverse();
+  const est = days.filter(d => d.imputed).length;
+  $('history-sub').textContent = `${days.length} days on record — green means the grid owed you`
+    + (est ? `, ${est} estimated` : '');
   buildTable($('history'),
     ['Date', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Inverters', 'Hours', 'Alerts'],
     days.map(d => [
-      d.date, fmt(d.pv_kwh, 2), fmt(d.consumption_kwh, 2),
-      { v: fmt(d.net_kwh, 2), cls: d.net_kwh < 0 ? 'exp' : '' },
-      d.inverters, d.hours === null || d.hours === undefined ? '—' : fmt(d.hours, 1),
-      { v: d.alerts || '', cls: 'alert' },
+      { v: d.date, cls: d.imputed ? 'est' : '' },
+      { v: fmt(d.pv_kwh, 2), cls: d.imputed ? 'est' : '' },
+      { v: fmt(d.consumption_kwh, 2), cls: d.imputed ? 'est' : '' },
+      { v: fmt(d.net_kwh, 2), cls: (d.net_kwh < 0 ? 'exp' : '') + (d.imputed ? ' est' : '') },
+      d.imputed ? { v: '—', cls: 'est' } : d.inverters,
+      d.imputed ? { v: '—', cls: 'est' }
+        : (d.hours === null || d.hours === undefined ? '—' : fmt(d.hours, 1)),
+      { v: d.imputed ? '≈ estimated — outage, no per-day data' : (d.alerts || ''),
+        cls: d.imputed ? 'alert est' : 'alert' },
     ]), true);
 }
 
