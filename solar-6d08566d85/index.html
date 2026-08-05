@@ -330,8 +330,8 @@ svg.chart text { font-variant-numeric: tabular-nums; }
 .toggle-table:hover { color: var(--text-primary); background: var(--page); }
 
 /* --- 14-day bars -------------------------------------------------------- */
-.strip-nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-#strip-goto {
+.chart-nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chart-nav input[type="date"] {
   font-family: 'IBM Plex Mono', monospace; font-size: 11px;
   color: var(--text-primary); background: var(--page);
   border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
@@ -508,11 +508,21 @@ footer.colophon {
 
     <section class="card hero">
       <div class="card-head">
-        <h2 class="eyebrow">Today</h2>
+        <h2 class="eyebrow" id="hero-eyebrow">Today</h2>
         <span class="date" id="hero-date"></span>
         <span class="push"></span>
         <div class="legend" id="hero-legend"></div>
-        <button class="toggle-table" data-toggle="hero-table">Table</button>
+        <div class="chart-nav">
+          <input type="date" id="hero-goto" aria-label="Go to day"
+                 data-tip="Jump to a day — limited to the days with 5-minute samples">
+          <button class="ghost" id="hero-today" type="button"
+                  data-tip="Back to the latest day">Today</button>
+          <button class="ghost nav" id="hero-prev" type="button"
+                  aria-label="Previous day" data-tip="Previous day">‹</button>
+          <button class="ghost nav" id="hero-next" type="button"
+                  aria-label="Next day" data-tip="Next day">›</button>
+          <button class="toggle-table" data-toggle="hero-table">Table</button>
+        </div>
       </div>
       <div class="chart-wrap">
         <svg class="chart" id="hero-chart" viewBox="0 0 1000 432" role="img" aria-label="Today's power and accumulated energy over the day"></svg>
@@ -546,7 +556,7 @@ footer.colophon {
         <p class="sub" id="strip-sub"></p>
         <span class="push"></span>
         <div class="legend" id="strip-legend"></div>
-        <div class="strip-nav">
+        <div class="chart-nav">
           <input type="date" id="strip-goto" aria-label="Go to day"
                  data-tip="Jump to a day — it becomes the right-hand edge of the window">
           <button class="ghost" id="strip-today" type="button"
@@ -820,16 +830,80 @@ const dayKey = ts => { const d = new Date(ts * 1000); return `${d.getFullYear()}
    not quite the same measurement as the readout tiles above (those come from
    the meter's own lifetime counters). They should agree closely; the tiles
    are the authority. */
+/* Which day the hero is showing. Null means the newest, so a page left open
+   rolls onto the new day by itself. Unlike the 14-day card - which is built
+   from daily totals and can reach the whole archive - this one needs 5-minute
+   samples, so it can only travel as far back as the intraday payload. */
+let HERO_DAY = null;
+let heroWired = false;
+
+function wireHeroNav(days) {
+  if (heroWired) return;
+  heroWired = true;
+  const go = key => { HERO_DAY = key; renderHero(DATA.intraday || { rows: [] }, DATA.live || {}); };
+  const stepBy = n => () => {
+    const list = heroDays(DATA.intraday || { rows: [] });
+    const i = list.indexOf(heroPick(list));
+    const next = list[Math.min(Math.max(i + n, 0), list.length - 1)];
+    if (next) go(next);
+  };
+  $('hero-prev').addEventListener('click', stepBy(-1));
+  $('hero-next').addEventListener('click', stepBy(1));
+  $('hero-today').addEventListener('click', () => go(null));
+  $('hero-goto').addEventListener('change', () => {
+    const want = $('hero-goto').value;
+    if (!want) return;
+    const list = heroDays(DATA.intraday || { rows: [] });
+    // snap to the nearest day that actually has samples
+    let best = list[0], bd = Infinity;
+    for (const k of list) {
+      const d = Math.abs(Date.parse(k + 'T12:00:00') - Date.parse(want + 'T12:00:00'));
+      if (d < bd) { bd = d; best = k; }
+    }
+    go(best);
+  });
+}
+
+/* Days with intraday samples, oldest first. */
+function heroDays(intraday) {
+  const seen = [];
+  let last = null;
+  for (const r of intraday.rows || []) {
+    const k = dayKey(r[0]);
+    if (k !== last) { if (!seen.includes(k)) seen.push(k); last = k; }
+  }
+  return seen.sort();
+}
+
+function heroPick(list) {
+  if (!list.length) return null;
+  return (HERO_DAY && list.includes(HERO_DAY)) ? HERO_DAY : list[list.length - 1];
+}
+
 function renderHero(intraday, live) {
+  wireHeroNav();
   const svg = $('hero-chart');
   clear(svg);
   const all = intraday.rows || [];
   if (!all.length) { $('hero-date').textContent = 'no samples yet'; renderReadouts(live, 1, 1, 1); return; }
 
-  const todayStr = dayKey(all[all.length - 1][0]);
+  const list = heroDays(intraday);
+  const todayStr = heroPick(list);
+  const isNewest = todayStr === list[list.length - 1];
   const rows = all.filter(r => dayKey(r[0]) === todayStr);
+  if (!rows.length) { $('hero-date').textContent = 'no samples for that day'; return; }
   const dayStart = new Date(rows[0][0] * 1000); dayStart.setHours(0, 0, 0, 0);
   const t0 = dayStart.getTime() / 1000;
+
+  const idx = list.indexOf(todayStr);
+  $('hero-prev').disabled = idx <= 0;
+  $('hero-next').disabled = idx >= list.length - 1;
+  $('hero-today').disabled = isNewest;
+  const gotoEl = $('hero-goto');
+  gotoEl.min = list[0];
+  gotoEl.max = list[list.length - 1];
+  if (document.activeElement !== gotoEl) gotoEl.value = todayStr;
+  $('hero-eyebrow').textContent = isNewest ? 'Today' : 'Day';
 
   $('hero-date').textContent = dayStart.toLocaleDateString(undefined,
     { weekday: 'long', month: 'long', day: 'numeric' });
@@ -931,7 +1005,8 @@ function renderHero(intraday, live) {
   // the sun, riding the current edge of the day
   const sx = X(last[0]), sy = Ya(last[1]);
   const halo = el('circle', { cx: sx, cy: sy, r: 7, fill: 'none', stroke: css('--sun'), 'stroke-width': 1.5 });
-  if ((live.status || 'ok') === 'ok') halo.setAttribute('class', 'sun-halo');
+  // the halo means "this is live" - a finished day gets a plain marker
+  if (isNewest && (live.status || 'ok') === 'ok') halo.setAttribute('class', 'sun-halo');
   else halo.setAttribute('opacity', 0);
   svg.appendChild(halo);
   svg.appendChild(el('circle', { cx: sx, cy: sy, r: 5, fill: css('--sun'),
@@ -997,11 +1072,38 @@ function renderHero(intraday, live) {
       fmt(cum[i][1], 2), fmt(cum[i][2], 2), { v: fmt(cum[i][3], 2), cls: cum[i][3] < 0 ? 'exp' : '' },
     ]).reverse());
 
-  // scale ceilings for the readout meters
-  const peak = Math.max(1, ...all.map(r => r[1]));
-  const loadPeak = Math.max(1, ...all.map(r => r[2]));
-  const netPeak = Math.max(0.5, ...all.map(r => Math.abs(r[3])));
-  renderReadouts(live, peak, loadPeak, netPeak);
+  if (isNewest) {
+    // scale ceilings for the readout meters
+    const peak = Math.max(1, ...all.map(r => r[1]));
+    const loadPeak = Math.max(1, ...all.map(r => r[2]));
+    const netPeak = Math.max(0.5, ...all.map(r => Math.abs(r[3])));
+    renderReadouts(live, peak, loadPeak, netPeak);
+  } else {
+    // "producing now" is meaningless for a finished day, so the tiles switch
+    // to that day's totals - the same figures the energy pane ends on.
+    renderDayReadouts(lastCum, dayStart);
+  }
+}
+
+function renderDayReadouts(cum, dayStart) {
+  const box = $('readouts');
+  clear(box);
+  const PROD = css('--prod'), CONS = css('--cons');
+  const when = dayStart.toLocaleDateString(undefined, { weekday: 'long' });
+  const tile = (label, color, value, foot) => {
+    const d = document.createElement('div');
+    d.className = 'tile';
+    d.innerHTML =
+      `<div class="label"><span class="key" style="background:${color}"></span>${label}</div>` +
+      `<div class="value">${fmt(Math.abs(value), 1)}<span class="unit"> kWh</span></div>` +
+      `<div class="foot">${foot}</div>`;
+    return d;
+  };
+  box.appendChild(tile('Produced', PROD, cum[1], `over ${when}`));
+  box.appendChild(tile('Used', CONS, cum[2], `over ${when}`));
+  const exporting = cum[3] < 0;
+  box.appendChild(tile(exporting ? 'Exported' : 'Imported',
+    exporting ? css('--exp') : css('--imp'), cum[3], `over ${when}`));
 }
 
 /* ---------- readouts ----------------------------------------------------
