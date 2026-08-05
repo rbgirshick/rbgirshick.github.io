@@ -407,6 +407,11 @@ th {
   border-bottom: 1px solid var(--axis); cursor: pointer; user-select: none;
 }
 th:hover { color: var(--text-primary); }
+th[data-dir] { color: var(--text-primary); }
+th[data-dir]::after {
+  content: '↑'; margin-left: 5px; font-size: 9px; color: var(--sun);
+}
+th[data-dir="desc"]::after { content: '↓'; }
 td { border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
 tbody tr:hover td { background: var(--page); }
 td.alert {
@@ -2010,6 +2015,32 @@ function renderHistory(history) {
     ]), true);
 }
 
+/* Comparator for table cells.
+
+   Dates must be tested BEFORE numbers: parseFloat('2026-07-31') is 2026, so a
+   numeric-first comparator makes every date in a year compare equal and the
+   Date column never sorts. ISO dates compare correctly as plain strings.
+   The numeric test is anchored so a value has to be entirely a number to count
+   as one - that keeps '—' out of the numeric branch instead of letting a
+   half-numeric comparison decide the order. */
+const ISO_DATE = /^\d{4}-\d{2}(-\d{2})?$/;
+
+function asNumber(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const s = String(v ?? '').trim().replace(/,/g, '');
+  return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(s) ? parseFloat(s) : null;
+}
+
+function compareCells(av, bv) {
+  const a = String(av ?? '').trim(), b = String(bv ?? '').trim();
+  if (ISO_DATE.test(a) && ISO_DATE.test(b)) return a < b ? -1 : a > b ? 1 : 0;
+  const an = asNumber(a), bn = asNumber(b);
+  if (an !== null && bn !== null) return an - bn;
+  if (an !== null) return -1;      // real values sort ahead of blanks and dashes
+  if (bn !== null) return 1;
+  return a.localeCompare(b);
+}
+
 function buildTable(host, headers, rows, sortable = false) {
   clear(host);
   const table = document.createElement('table');
@@ -2025,12 +2056,7 @@ function buildTable(host, headers, rows, sortable = false) {
         const dir = th.dataset.dir === 'asc' ? -1 : 1;
         htr.querySelectorAll('th').forEach(x => delete x.dataset.dir);
         th.dataset.dir = dir === 1 ? 'asc' : 'desc';
-        rows.sort((a, b) => {
-          const av = cellValue(a[i]), bv = cellValue(b[i]);
-          const an = parseFloat(av), bn = parseFloat(bv);
-          if (!Number.isNaN(an) && !Number.isNaN(bn)) return (an - bn) * dir;
-          return String(av).localeCompare(String(bv)) * dir;
-        });
+        rows.sort((a, b) => compareCells(cellValue(a[i]), cellValue(b[i])) * dir);
         fill();
       };
       th.addEventListener('click', sort);
