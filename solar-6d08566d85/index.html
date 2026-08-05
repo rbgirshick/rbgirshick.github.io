@@ -1540,7 +1540,7 @@ function renderArray(live) {
       `<div class="row">today<span class="num">${fmt(v, 2)} kWh</span></div>` +
       `<div class="row">lifetime<span class="num">${fmt(inv.lifetime_kwh, 0)} kWh</span></div>` +
       (inv.pct_of_avg !== undefined
-        ? `<div class="row">of array average<span class="num">${esc(inv.pct_of_avg)}%</span></div>` : '') +
+        ? `<div class="row">vs. average panel today<span class="num">${esc(inv.pct_of_avg)}%</span></div>` : '') +
       (!working ? `<div class="row">state<span class="num">${esc(inv.state)}</span></div>` : '');
     cell.tabIndex = 0;
     return cell;
