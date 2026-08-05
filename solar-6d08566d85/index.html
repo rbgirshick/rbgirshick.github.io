@@ -330,7 +330,14 @@ svg.chart text { font-variant-numeric: tabular-nums; }
 .toggle-table:hover { color: var(--text-primary); background: var(--page); }
 
 /* --- 14-day bars -------------------------------------------------------- */
-.strip-nav { display: flex; align-items: center; gap: 6px; }
+.strip-nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#strip-goto {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  color: var(--text-primary); background: var(--page);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
+}
+button.ghost:disabled { opacity: 0.35; cursor: default; }
+button.ghost:disabled:hover { background: transparent; color: var(--text-secondary); }
 button.ghost.nav {
   font-family: 'IBM Plex Sans', sans-serif; font-size: 15px; line-height: 1;
   padding: 3px 10px 5px;
@@ -538,7 +545,12 @@ footer.colophon {
         <h2 class="eyebrow">14 days</h2>
         <p class="sub" id="strip-sub"></p>
         <span class="push"></span>
+        <div class="legend" id="strip-legend"></div>
         <div class="strip-nav">
+          <input type="date" id="strip-goto" aria-label="Go to day"
+                 data-tip="Jump to a day — it becomes the right-hand edge of the window">
+          <button class="ghost" id="strip-today" type="button"
+                  data-tip="Back to the most recent 14 days">Today</button>
           <button class="ghost nav" id="strip-prev" type="button"
                   aria-label="Show the previous day" data-tip="Slide the window one day earlier">‹</button>
           <button class="ghost nav" id="strip-next" type="button"
@@ -547,7 +559,7 @@ footer.colophon {
         </div>
       </div>
       <div class="chart-wrap">
-        <svg class="chart" id="strip-chart" viewBox="0 0 1000 440" role="img"
+        <svg class="chart" id="strip-chart" viewBox="0 0 1000 340" role="img"
              aria-label="Daily production, consumption and net grid over a 14-day window"></svg>
         <div class="tooltip" id="strip-tip"></div>
       </div>
@@ -1048,23 +1060,31 @@ function renderReadouts(live, peak, loadPeak, netPeak) {
       title: `Grid flow now vs the biggest of the last ${days} days (${fmt(netPeak, 1)} kW) — right of center imports, left exports` }));
 }
 
-/* ---------- 14-day bars --------------------------------------------------
-   Three per-day bar charts sharing one day axis - one series each, so every
-   bar can carry its own value without a legend or a hover. The window slides
-   a day at a time over the whole daily history, not just the intraday window.
-   Bars are drawn from daily totals, so a day is one bar, not a curve.        */
+/* ---------- 14 days -------------------------------------------------------
+   One pane, three bars per day, on a single shared kWh scale - so bar heights
+   are directly comparable across series, not just within one. Net grid keeps
+   its own identity colour rather than a diverging pair: beside a blue
+   consumption bar, a blue "imported" bar would read as the same series.
+   Direction carries the sign instead, which the zero line makes obvious.
+
+   Values sit outside every bar end, rotated to read bottom-to-top: at three
+   bars per day there is only ~18px of width per bar, far too little for a
+   horizontal "-32.1", and the point of this card is that no hovering is
+   needed.                                                                   */
 let STRIP_OFFSET = 0;      // days back from the newest day with data
+let STRIP_TARGET = null;   // a date to jump to, resolved on the next render
 let stripWired = false;
 
 function wireStripNav() {
   if (stripWired) return;
   stripWired = true;
-  const step = n => () => {
-    STRIP_OFFSET += n;
-    renderStrip(DATA.history || {}, DATA.live || {});
-  };
-  $('strip-prev').addEventListener('click', step(1));
-  $('strip-next').addEventListener('click', step(-1));
+  const rerender = () => renderStrip(DATA.history || {}, DATA.live || {});
+  $('strip-prev').addEventListener('click', () => { STRIP_OFFSET += 1; rerender(); });
+  $('strip-next').addEventListener('click', () => { STRIP_OFFSET -= 1; rerender(); });
+  $('strip-today').addEventListener('click', () => { STRIP_OFFSET = 0; STRIP_TARGET = null; rerender(); });
+  $('strip-goto').addEventListener('change', () => {
+    if ($('strip-goto').value) { STRIP_TARGET = $('strip-goto').value; rerender(); }
+  });
 }
 
 function renderStrip(history, live) {
@@ -1085,6 +1105,13 @@ function renderStrip(history, live) {
   const newest = parse(all[all.length - 1].date);
   const oldest = parse(all[0].date);
   const maxOffset = Math.max(0, Math.round((newest - oldest) / dayMs) - 13);
+
+  // A requested day becomes the right-hand edge of the window, so you see it
+  // together with the fortnight leading up to it.
+  if (STRIP_TARGET) {
+    STRIP_OFFSET = Math.round((newest - parse(STRIP_TARGET)) / dayMs);
+    STRIP_TARGET = null;
+  }
   STRIP_OFFSET = Math.min(Math.max(0, STRIP_OFFSET), maxOffset);
 
   const end = new Date(newest.getTime() - STRIP_OFFSET * dayMs);
@@ -1097,104 +1124,119 @@ function renderStrip(history, live) {
 
   $('strip-prev').disabled = STRIP_OFFSET >= maxOffset;
   $('strip-next').disabled = STRIP_OFFSET <= 0;
+  $('strip-today').disabled = STRIP_OFFSET <= 0;
+  const goto_ = $('strip-goto');
+  goto_.min = all[0].date;
+  goto_.max = all[all.length - 1].date;
+  if (document.activeElement !== goto_) goto_.value = isoLocal(end);
   const fmtDay = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   $('strip-sub').textContent = `${fmtDay(window14[0].d)} – ${fmtDay(end)}`
     + (STRIP_OFFSET ? ` · ${STRIP_OFFSET} day${STRIP_OFFSET === 1 ? '' : 's'} back` : '');
 
-  const PROD = css('--prod'), CONS = css('--cons'), IMP = css('--imp'), EXP = css('--exp');
-  const W = 1000, padL = 54, padR = 14;
-  const band = (W - padL - padR) / 14;
-  const barW = Math.min(26, band - 16);
-  const PANES = [
-    { key: 'pv_kwh', title: 'PRODUCTION · kWh', top: 26, bot: 116, color: () => PROD },
-    { key: 'consumption_kwh', title: 'CONSUMPTION · kWh', top: 168, bot: 258, color: () => CONS },
-    { key: 'net_kwh', title: 'NET GRID · kWh — above zero imported, below exported',
-      top: 310, bot: 400, color: v => (v >= 0 ? IMP : EXP), signed: true },
+  const PROD = css('--prod'), CONS = css('--cons'), NET = css('--net');
+  const SERIES = [
+    { key: 'pv_kwh', name: 'Production', color: PROD },
+    { key: 'consumption_kwh', name: 'Consumption', color: CONS },
+    { key: 'net_kwh', name: 'Net grid', color: NET },
   ];
+  legendInto('strip-legend', SERIES.map(s => [s.name, s.color]));
 
-  for (const p of PANES) {
-    const vals = window14.map(w => (w.row ? w.row[p.key] : null)).filter(v => v !== null && v !== undefined);
-    let lo = 0, hi = 0.5;
-    for (const v of vals) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
-    if (!p.signed) lo = 0;
-    // headroom so the value labels clear the bar ends
-    const pad = (hi - lo) * 0.16 || 1;
-    const step = niceStep((hi - lo) / 3);
-    const sLo = Math.floor((lo - (p.signed ? pad : 0)) / step) * step;
-    const sHi = Math.ceil((hi + pad) / step) * step;
-    const Y = v => p.top + (1 - (v - sLo) / (sHi - sLo || 1)) * (p.bot - p.top);
+  const W = 1000, H = 340, padL = 46, padR = 12, top = 30, bot = 272;
+  const band = (W - padL - padR) / 14;
+  const gap = 2;                                   // surface gap between bars
+  const barW = Math.max(6, (band - 16 - gap * 2) / 3);
 
-    for (let i = 0; ; i++) {
-      const v = sLo + i * step;
-      if (v > sHi + 1e-9) break;
-      const zero = Math.abs(v) < 1e-9;
-      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
-        stroke: zero ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
-      text(svg, padL - 8, Y(v) + 3.5, fmt(v, 0), { 'text-anchor': 'end' });
+  let lo = 0, hi = 0.5;
+  for (const w of window14) {
+    if (!w.row) continue;
+    for (const s of SERIES) {
+      const v = w.row[s.key];
+      if (v === null || v === undefined) continue;
+      lo = Math.min(lo, v); hi = Math.max(hi, v);
     }
-    text(svg, padL, p.top - 9, p.title, { 'text-anchor': 'start', 'font-size': 9.5,
-      fill: css('--text-muted'), 'letter-spacing': '0.08em' });
+  }
+  // headroom at both ends for the rotated value labels
+  const room = Math.max(hi - lo, 1) * 0.13;
+  const step = niceStep((hi - lo) / 5);
+  const sLo = Math.floor((lo - room) / step) * step;
+  const sHi = Math.ceil((hi + room) / step) * step;
+  const Y = v => top + (1 - (v - sLo) / (sHi - sLo)) * (bot - top);
 
-    window14.forEach((w, i) => {
-      const cx = padL + band * i + band / 2;
-      if (!w.row) return;
-      const v = w.row[p.key];
+  for (let i = 0; ; i++) {
+    const v = sLo + i * step;
+    if (v > sHi + 1e-9) break;
+    const zero = Math.abs(v) < 1e-9;
+    svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
+      stroke: zero ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
+    text(svg, padL - 8, Y(v) + 3.5, fmt(v, 0), { 'text-anchor': 'end' });
+  }
+  text(svg, padL - 8, top - 10, 'kWh', { 'text-anchor': 'end' });
+
+  window14.forEach((w, i) => {
+    const groupX = padL + band * i + (band - (barW * 3 + gap * 2)) / 2;
+    if (!w.row) {
+      text(svg, padL + band * i + band / 2, Y(0) - 6, '—', { 'text-anchor': 'middle', 'font-size': 10 });
+      return;
+    }
+    const est = !!w.row.imputed;
+    const partial = !est && !(w.row.hours >= 23 && w.row.hours <= 25);
+    SERIES.forEach((s, j) => {
+      const v = w.row[s.key];
       if (v === null || v === undefined) return;
+      const x = groupX + j * (barW + gap);
       const y0 = Y(0), y = Y(v);
-      const h = Math.max(1, Math.abs(y - y0));
-      const color = p.color(v);
-      const est = !!w.row.imputed;
-      const partial = !est && !(w.row.hours >= 23 && w.row.hours <= 25);
       const bar = el('path', {
-        d: barPath(cx - barW / 2, y0, barW, h, v >= 0 ? 1 : -1),
-        fill: color,
-        'fill-opacity': est ? 0.3 : partial ? 0.55 : 1,
+        d: barPath(x, y0, barW, Math.max(1, Math.abs(y - y0)), v >= 0 ? 1 : -1),
+        fill: s.color, 'fill-opacity': est ? 0.3 : partial ? 0.55 : 1,
       });
-      if (est) { bar.setAttribute('stroke', color); bar.setAttribute('stroke-width', 1);
-        bar.setAttribute('stroke-dasharray', '3 2'); }
+      if (est) {
+        bar.setAttribute('stroke', s.color);
+        bar.setAttribute('stroke-width', 0.9);
+        bar.setAttribute('stroke-dasharray', '3 2');
+      }
       svg.appendChild(bar);
 
-      // the value, always on: above a bar that grows up, below one that grows down
-      const label = (est ? '≈' : '') + fmt(v, Math.abs(v) >= 100 ? 0 : 1);
-      text(svg, cx, v >= 0 ? y - 5 : y + 11, label, {
-        'text-anchor': 'middle', 'font-size': 9.5,
-        fill: est ? css('--text-muted') : css('--text-secondary'),
-        'font-style': est ? 'italic' : 'normal' });
+      // rotate(-90) makes text read bottom-to-top; anchored start it grows
+      // upward from the point, anchored end it grows downward - so a label
+      // always sits outside its own bar end whichever way the bar points.
+      const cx = x + barW / 2;
+      const ly = v >= 0 ? y - 4 : y + 4;
+      const t = el('text', {
+        x: cx, y: ly, transform: `rotate(-90 ${cx.toFixed(1)} ${ly.toFixed(1)})`,
+        'text-anchor': v >= 0 ? 'start' : 'end',
+        'font-size': 8.5, fill: est ? css('--text-muted') : css('--text-secondary'),
+        'font-style': est ? 'italic' : 'normal',
+      });
+      t.textContent = (est ? '≈' : '') + fmt(v, Math.abs(v) >= 100 ? 0 : 1);
+      svg.appendChild(t);
     });
-  }
-
-  // day labels once, under the bottom pane
-  const bottom = PANES[PANES.length - 1].bot;
-  window14.forEach((w, i) => {
-    const cx = padL + band * i + band / 2;
-    const isToday = w.row && w.row.partial && w.key === isoLocal(newest);
-    text(svg, cx, bottom + 18,
-      w.d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2), {
-        'text-anchor': 'middle', 'font-size': 9.5,
-        fill: w.row ? css('--text-secondary') : css('--text-muted') });
-    text(svg, cx, bottom + 30, String(w.d.getDate()), {
-      'text-anchor': 'middle', 'font-size': 10,
-      fill: w.row ? css('--text-primary') : css('--text-muted'),
-      'font-weight': isToday ? 600 : 400 });
-    if (!w.row) text(svg, cx, PANES[0].bot - 4, '—', { 'text-anchor': 'middle', 'font-size': 10 });
   });
 
-  // one hover target per day column, spanning all three panes
+  window14.forEach((w, i) => {
+    const cx = padL + band * i + band / 2;
+    const isNewest = w.key === isoLocal(newest);
+    text(svg, cx, bot + 18, w.d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2), {
+      'text-anchor': 'middle', 'font-size': 9.5,
+      fill: w.row ? css('--text-secondary') : css('--text-muted') });
+    text(svg, cx, bot + 31, String(w.d.getDate()), {
+      'text-anchor': 'middle', 'font-size': 10.5,
+      fill: w.row ? css('--text-primary') : css('--text-muted'),
+      'font-weight': isNewest ? 600 : 400 });
+  });
+
   const tip = $('strip-tip');
   window14.forEach((w, i) => {
     const x = padL + band * i;
-    const hit = el('rect', { x, y: PANES[0].top - 14, width: band,
-      height: bottom - PANES[0].top + 14, fill: 'transparent' });
+    const hit = el('rect', { x, y: top, width: band, height: bot - top, fill: 'transparent' });
     hit.addEventListener('mouseenter', () => {
       const box = svg.getBoundingClientRect();
       const r = w.row;
-      const line = (n, c, v) => `<div class="row"><span class="sw" style="background:${c}"></span>${n}`
-        + `<span class="num">${v === null || v === undefined ? '—' : fmt(v, 1)} kWh</span></div>`;
+      const line = s => `<div class="row"><span class="sw" style="background:${s.color}"></span>${s.name}`
+        + `<span class="num">${r[s.key] === null || r[s.key] === undefined ? '—' : fmt(r[s.key], 1)} kWh</span></div>`;
       tip.innerHTML = `<b>${esc(w.d.toLocaleDateString(undefined,
           { weekday: 'long', month: 'short', day: 'numeric' }))}</b>`
         + (r
-          ? line('Production', PROD, r.pv_kwh) + line('Consumption', CONS, r.consumption_kwh)
-            + line('Net grid', r.net_kwh >= 0 ? IMP : EXP, r.net_kwh)
+          ? SERIES.map(line).join('')
             + (r.imputed
               ? '<div style="color:var(--text-muted);margin-top:3px">estimated — outage total '
                 + 'split across days, not measured</div>'
@@ -1205,7 +1247,7 @@ function renderStrip(history, live) {
           : '<div class="row">no data — collection was down</div>');
       tip.style.opacity = 1;
       tip.style.left = `${(x + band / 2) / W * box.width}px`;
-      tip.style.top = `${PANES[0].top / 440 * box.height}px`;
+      tip.style.top = `${top / H * box.height}px`;
     });
     hit.addEventListener('mouseleave', () => tip.style.opacity = 0);
     svg.appendChild(hit);
