@@ -664,6 +664,7 @@ const REPO = 'rbgirshick/pv-feed-a9074342';
 const BASE = `https://raw.githubusercontent.com/${REPO}/main`;
 const FILES = ['live', 'intraday', 'history', 'inverters'];
 const REFRESH_MS = 60000;
+const STALE_AFTER_MINUTES = 60;   // matches the publisher's own threshold
 const KEY_STORAGE = 'solar-dashboard-key';
 
 const $ = id => document.getElementById(id);
@@ -736,6 +737,7 @@ async function fetchAndDecrypt(name) {
    One shared styled tooltip replaces every native title attribute: instant,
    theme-aware, and it also fires on keyboard focus. Content is HTML from
    the element's data-tip.                                                 */
+let TIP_RECHECK = null;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function initTips() {
@@ -763,6 +765,9 @@ function initTips() {
     }
   };
   const hide = () => { current = null; tip.style.opacity = 0; };
+  // A 60s refresh replaces the hovered node without firing mouseout, which
+  // used to strand the tooltip on screen pointing at nothing.
+  TIP_RECHECK = () => { if (current && !document.contains(current)) hide(); };
 
   document.addEventListener('mouseover', e => {
     const t = e.target.closest('[data-tip]');
@@ -816,7 +821,35 @@ function legendInto(id, items) {
     box.appendChild(s);
   }
 }
-const dayKey = ts => { const d = new Date(ts * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+/* ---------- site time ----------------------------------------------------
+   Samples are stamped in the house's timezone and the payload carries which
+   one, so days are bucketed there rather than in the viewer's zone. Reading
+   the dashboard from New York at 00:30 would otherwise push the evening's
+   Seattle samples into tomorrow and label the day wrong.
+
+   Everything intraday is positioned by site wall-clock time rather than by
+   epoch arithmetic, which also makes the two DST days come out right: a 23-
+   or 25-hour day still runs 00:00 to 24:00 on the axis, so the hour marks
+   stay where their labels say they are. */
+const SITE_TZ = () => (DATA.intraday && DATA.intraday.tz) || (DATA.live && DATA.live.tz) || undefined;
+const _dtf = {};
+function siteFmt(opts) {
+  const key = SITE_TZ() + JSON.stringify(opts);
+  return _dtf[key] || (_dtf[key] = new Intl.DateTimeFormat('en-CA',
+    { ...opts, timeZone: SITE_TZ() }));
+}
+/* 'YYYY-MM-DD' for an epoch-seconds instant, in site time. */
+const dayKey = ts => siteFmt({ year: 'numeric', month: '2-digit', day: '2-digit' })
+  .format(new Date(ts * 1000));
+/* Seconds since site-local midnight - the x position of a sample within its day. */
+function siteSecondsIntoDay(ts) {
+  const p = siteFmt({ hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+    .formatToParts(new Date(ts * 1000));
+  const g = t => Number(p.find(x => x.type === t).value);
+  return (g('hour') % 24) * 3600 + g('minute') * 60 + g('second');
+}
+/* A Date positioned at noon site-time on the given key, for labelling only. */
+const siteNoon = key => new Date(`${key}T12:00:00`);
 
 /* ---------- hero: today ------------------------------------------------- */
 /* ---------- hero: today, in two panes ------------------------------------
@@ -892,8 +925,7 @@ function renderHero(intraday, live) {
   const isNewest = todayStr === list[list.length - 1];
   const rows = all.filter(r => dayKey(r[0]) === todayStr);
   if (!rows.length) { $('hero-date').textContent = 'no samples for that day'; return; }
-  const dayStart = new Date(rows[0][0] * 1000); dayStart.setHours(0, 0, 0, 0);
-  const t0 = dayStart.getTime() / 1000;
+  const dayStart = siteNoon(todayStr);
 
   const idx = list.indexOf(todayStr);
   $('hero-prev').disabled = idx <= 0;
@@ -927,7 +959,7 @@ function renderHero(intraday, live) {
   const W = 1000, H = 432, padL = 48, padR = 16;
   const A = { top: 20, bot: 236 };      // power
   const B = { top: 288, bot: 398 };     // energy
-  const X = t => padL + (t - t0) / 86400 * (W - padL - padR);
+  const X = t => padL + siteSecondsIntoDay(t) / 86400 * (W - padL - padR);
 
   /* Domain for a signed pane: take the data's extent, pick a nice step, then
      round the ends OUT to multiples of it. Rounding out is what guarantees a
@@ -958,7 +990,7 @@ function renderHero(intraday, live) {
       text(svg, padL - 8, Y(v) + 3.5, fmt(v, dec), { 'text-anchor': 'end' });
     }
     for (const [h, lab] of [[6, '6 am'], [12, 'noon'], [18, '6 pm']]) {
-      const x = X(t0 + h * 3600);
+      const x = padL + (h * 3600) / 86400 * (W - padL - padR);
       svg.appendChild(el('line', { x1: x, x2: x, y1: p.top, y2: p.bot,
         stroke: css('--grid'), 'stroke-width': 1 }));
       if (p === B) text(svg, x, p.bot + 16, lab, { 'text-anchor': 'middle' });
@@ -1028,9 +1060,12 @@ function renderHero(intraday, live) {
   const move = ev => {
     const box = svg.getBoundingClientRect();
     const px = (ev.clientX - box.left) / box.width * W;
-    const t = t0 + (px - padL) / (W - padL - padR) * 86400;
+    const want = (px - padL) / (W - padL - padR) * 86400;
     let idx = 0, bd = Infinity;
-    rows.forEach((r, i) => { const d = Math.abs(r[0] - t); if (d < bd) { bd = d; idx = i; } });
+    rows.forEach((r, i) => {
+      const d = Math.abs(siteSecondsIntoDay(r[0]) - want);
+      if (d < bd) { bd = d; idx = i; }
+    });
     const best = rows[idx], bestCum = cum[idx];
     hair.setAttribute('x1', X(best[0])); hair.setAttribute('x2', X(best[0])); hair.setAttribute('opacity', 1);
     [1, 2, 3].forEach((k, i) => {
@@ -1067,7 +1102,7 @@ function renderHero(intraday, live) {
     ['Time', 'Production (kW)', 'Consumption (kW)', 'Net grid (kW)',
      'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)'],
     rows.map((r, i) => [
-      new Date(r[0] * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+      siteFmt({ hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(r[0] * 1000)),
       fmt(r[1], 2), fmt(r[2], 2), { v: fmt(r[3], 2), cls: r[3] < 0 ? 'exp' : '' },
       fmt(cum[i][1], 2), fmt(cum[i][2], 2), { v: fmt(cum[i][3], 2), cls: cum[i][3] < 0 ? 'exp' : '' },
     ]).reverse());
@@ -1429,10 +1464,15 @@ function renderMonthly(history) {
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const monthName = ym => `${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`;
+/* Label every month while they fit, then thin out as the archive grows -
+   about 14 labels is what the width holds before they touch. The last month
+   is always labelled, since it is the one being read. */
 function monthTick(ym, i, months) {
+  const stride = Math.ceil(months.length / 14);
+  if (stride > 1 && i % stride !== 0 && i !== months.length - 1) return '';
   const name = MONTHS[+ym.slice(5) - 1];
   const first = i === 0 || ym.slice(0, 4) !== months[i - 1].month.slice(0, 4);
-  return first ? `${name} ${ym.slice(2, 4)}` : name;
+  return (first || stride > 1) ? `${name} ${ym.slice(2, 4)}` : name;
 }
 
 /* ---------- net grid: diverging bars ------------------------------------ */
@@ -1830,8 +1870,9 @@ let RANGE = { preset: 'today', from: null, to: null };
 let rangeWired = false;
 
 function rangeWindow(days) {
-  const today = new Date();
-  const todayStr = isoLocal(today);
+  // the house's today, so a viewer in another timezone gets the same window
+  const todayStr = dayKey(Date.now() / 1000);
+  const today = siteNoon(todayStr);
   if (RANGE.preset) {
     const p = PRESETS.find(x => x.key === RANGE.preset) || PRESETS[0];
     const start = p.from(today);
@@ -2115,10 +2156,12 @@ function renderMeters(live) {
   const m = live.meters;
   if (!m) { box.textContent = 'No meter data yet.'; return; }
 
+  // Meter serials come verbatim from the PVS6 over an unverified TLS link, so
+  // they are device-controlled text reaching an innerHTML sink - escape them.
   const block = (title, rows) => {
     const d = document.createElement('div');
-    d.innerHTML = `<div class="mt">${title}</div>` + rows.map(([k, v]) =>
-      `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+    d.innerHTML = `<div class="mt">${esc(title)}</div>` + rows.map(([k, v]) =>
+      `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('');
     return d;
   };
   box.appendChild(block('Production', [
@@ -2253,14 +2296,29 @@ async function load(initial = false) {
 
 function renderAll() {
   const live = DATA.live || {};
-  $('updated').textContent = live.latest_sample
-    ? `read ${new Date(live.latest_sample.replace(' ', 'T')).toLocaleString(undefined,
-        { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
-    : '';
+  if (TIP_RECHECK) TIP_RECHECK();
+  $('updated').textContent = live.latest_epoch
+    ? `read ${siteFmt({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        hour12: true }).format(new Date(live.latest_epoch * 1000))}`
+    : (live.latest_sample ? `read ${live.latest_sample}` : '');
+
+  /* Staleness is judged here against the wall clock, not read out of the
+     payload. live.status was frozen at publish time, so if the Pi died the
+     feed would keep serving a cheerful "ok" forever while the data aged - and
+     the moving sun on the compass made it look livelier still. */
+  const ageMin = live.latest_epoch !== undefined
+    ? (Date.now() / 1000 - live.latest_epoch) / 60
+    : (live.age_minutes || 0);
+  const stale = ageMin > STALE_AFTER_MINUTES;
   const pill = $('status');
-  pill.className = `pill ${live.status === 'ok' ? 'ok' : 'stale'}`;
-  $('status-text').textContent = live.status === 'ok'
-    ? 'live' : `stale ${fmt((live.age_minutes || 0) / 60, 1)}h`;
+  pill.className = `pill ${stale ? 'stale' : 'ok'}`;
+  $('status-text').textContent = stale
+    ? (ageMin >= 1440 ? `stale ${fmt(ageMin / 1440, 1)}d` : `stale ${fmt(ageMin / 60, 1)}h`)
+    : 'live';
+  pill.dataset.tip = `<b>Feed</b><div class="row">last sample<span class="num">`
+    + `${ageMin < 90 ? `${Math.round(ageMin)} min` : `${fmt(ageMin / 60, 1)} h`} ago</span></div>`
+    + (stale ? '<div style="color:var(--text-muted);margin-top:3px">the Pi has stopped '
+      + 'publishing, or collection has stalled</div>' : '');
 
   renderHero(DATA.intraday || { rows: [] }, live);
   renderStrip(DATA.history || {}, live);
