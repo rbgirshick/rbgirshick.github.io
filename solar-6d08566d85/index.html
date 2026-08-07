@@ -1746,11 +1746,37 @@ function renderMonthly(history) {
 function renderCumulative(history) {
   const svg = $('ytd');
   clear(svg);
-  const years = availableYears(history);
-  if (!years.length) { $('ytd-sub').textContent = 'no data yet'; return; }
+  const allYears = availableYears(history);
+  if (!allYears.length) { $('ytd-sub').textContent = 'no data yet'; return; }
 
-  // Default: everything, which is the comparison you wanted when you opened it.
+  const byYear = {};
+  for (const d of dailySeries(history)) (byYear[+d.date.slice(0, 4)] ||= []).push(d);
+
+  /* A curve is only comparable if it starts where the others do. The first
+     year of any archive begins whenever the hardware was switched on - here
+     2025 opens on October 17 - and its running total would sit far below every
+     full year for reasons that have nothing to do with the system. Those years
+     are left out rather than drawn as an apparently terrible year, and the
+     subtitle says which and why. A week of slack, so a couple of missing days
+     in early January does not disqualify an otherwise whole year. */
+  const START_SLACK_DAYS = 7;
+  const firstDoy = y => {
+    const d = (byYear[y] || [])[0];
+    if (!d) return 999;
+    return Math.round((Date.UTC(+d.date.slice(0, 4), +d.date.slice(5, 7) - 1, +d.date.slice(8, 10))
+      - Date.UTC(y, 0, 1)) / 86400000);
+  };
+  const partial = allYears.filter(y => firstDoy(y) > START_SLACK_DAYS);
+  let years = allYears.filter(y => firstDoy(y) <= START_SLACK_DAYS);
+
+  // Nothing whole yet: show the newest year anyway rather than an empty card,
+  // and say plainly that it is not a comparison.
+  const noneWhole = !years.length;
+  if (noneWhole) years = allYears.slice(-1);
+
   if (!CUM_YEARS) CUM_YEARS = new Set(years);
+  for (const y of [...CUM_YEARS]) if (!years.includes(y)) CUM_YEARS.delete(y);
+  if (!CUM_YEARS.size) CUM_YEARS = new Set(years);
   const chosen = years.filter(y => CUM_YEARS.has(y));
   legendInto('ytd-legend', METRICS.map(m => [m.label, m.color()]));
 
@@ -1762,12 +1788,15 @@ function renderCumulative(history) {
     renderCumulative(history);
   });
 
-  $('ytd-sub').textContent = chosen.length > 1
-    ? `accumulated from January 1 — ${chosen.length} years overlaid, older years fainter`
-    : 'accumulated from January 1';
-
-  const byYear = {};
-  for (const d of dailySeries(history)) (byYear[+d.date.slice(0, 4)] ||= []).push(d);
+  const dropped = partial.length
+    ? ` — ${partial.join(', ')} left out, ${partial.length === 1 ? 'its records begin' : 'their records begin'} `
+      + `${(byYear[partial[0]] || [{}])[0].date || 'mid-year'}, so ${partial.length === 1 ? 'it is' : 'they are'} not comparable`
+    : '';
+  $('ytd-sub').textContent = noneWhole
+    ? `${allYears[allYears.length - 1]} so far — records begin mid-year, so there is nothing to compare against yet`
+    : (chosen.length > 1
+      ? `accumulated from January 1 — ${chosen.length} years overlaid, older years fainter${dropped}`
+      : `accumulated from January 1${dropped}`);
 
   const W = chartW(svg);
   const narrow = W < 560;
