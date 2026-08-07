@@ -1500,7 +1500,6 @@ let YEAR_SEL = null;         // null tracks the newest year as data arrives
 let YEAR_COMPARE = true;     // overlay other years on the monthly bars
 let CUM_METRIC = 'pv_kwh';
 let CUM_YEARS = null;        // Set of years; null means "pick sensible defaults"
-let CUM_COMPARE = true;      // overlay earlier years on the cumulative curves
 let yearsWired = false;
 
 const METRICS = [
@@ -1782,19 +1781,16 @@ function renderCumulative(history) {
 
   const multi = years.length > 1;
   const newest = years[years.length - 1];
-  // With comparison off this is just this year's running total; the year chips
-  // only mean anything once there is more than one curve, so they go away.
-  const chosen = (multi && CUM_COMPARE) ? years.filter(y => CUM_YEARS.has(y)) : [newest];
+  const chosen = years.filter(y => CUM_YEARS.has(y));
 
-  chipRow($('ytd-years'), !multi ? [] : [
-    ...(CUM_COMPARE ? [...years].reverse().map(y => ({
-      key: y, label: String(y), on: CUM_YEARS.has(y),
-    })) : []),
-    { key: 'cmp', label: 'compare', on: CUM_COMPARE,
-      tip: 'Overlay the earlier years on these curves' },
-  ], item => {
-    if (item.key === 'cmp') CUM_COMPARE = !CUM_COMPARE;
-    else if (CUM_YEARS.has(item.key)) { if (CUM_YEARS.size > 1) CUM_YEARS.delete(item.key); }
+  /* No compare toggle here, unlike the monthly card: these chips already are
+     one. There is no primary year to overlay onto - the card is just a set of
+     curves - so switching a year off is exactly what "stop comparing" means,
+     and the last one cannot be switched off. */
+  chipRow($('ytd-years'), !multi ? [] : [...years].reverse().map(y => ({
+    key: y, label: String(y), on: CUM_YEARS.has(y),
+  })), item => {
+    if (CUM_YEARS.has(item.key)) { if (CUM_YEARS.size > 1) CUM_YEARS.delete(item.key); }
     else CUM_YEARS.add(item.key);
     renderCumulative(history);
   });
@@ -1807,7 +1803,7 @@ function renderCumulative(history) {
     ? `${allYears[allYears.length - 1]} so far — records begin mid-year, so there is nothing to compare against yet`
     : (chosen.length > 1
       ? `accumulated from January 1 — ${chosen.length} years overlaid, older years fainter${dropped}`
-      : `${newest} accumulated from January 1${multi ? ', comparison off' : ''}${dropped}`);
+      : `${newest} accumulated from January 1${dropped}`);
 
   const W = chartW(svg);
   const narrow = W < 560;
