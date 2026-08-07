@@ -238,7 +238,17 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px;
   margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--grid);
 }
-@media (max-width: 680px) { .readouts { grid-template-columns: 1fr; gap: 18px; } }
+/* Three across even on a phone. Stacked, the three tiles made the hero card
+   roughly a screen and a half tall before the chart below it was reachable;
+   the numbers shrink but stay the largest text on the page. */
+@media (max-width: 680px) {
+  .readouts { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .tile .value { font-size: 22px; }
+  .tile .value .unit { font-size: 11px; }
+  .tile .label { font-size: 9px; letter-spacing: 0.06em; gap: 4px; }
+  .tile .label .key { width: 7px; height: 7px; }
+  .tile .foot { font-size: 10.5px; }
+}
 .tile .label {
   font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 500;
   letter-spacing: 0.13em; text-transform: uppercase; color: var(--text-secondary);
@@ -297,6 +307,26 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
 
 /* --- charts ------------------------------------------------------------ */
 .chart-wrap { position: relative; }
+
+/* A flex item will not shrink below its content by default, so the legend
+   pushed itself off the edge of the card head and lost its last entry rather
+   than wrapping. Below the breakpoint the legend and the nav each take a row
+   of their own. */
+.card-head .legend { min-width: 0; }
+@media (max-width: 680px) {
+  .viz-root { padding: 14px 10px 32px; }
+  .card { padding: 14px 12px 16px; }
+  .card-head { gap: 6px 10px; }
+  .card-head .legend,
+  .card-head .chart-nav { flex-basis: 100%; margin-left: 0; }
+  .card-head .push { display: none; }
+  .legend { font-size: 11.5px; gap: 4px 14px; }
+  .chart-nav { justify-content: flex-start; }
+  .range-dates { margin-left: 0; flex-basis: 100%; flex-wrap: wrap; }
+  /* Native date inputs carry a wide intrinsic size and will not shrink on
+     their own - at 320px the pair pushed the page 9px wider than the screen. */
+  .range-dates input, .chart-nav input[type="date"] { min-width: 0; flex: 1 1 120px; }
+}
 svg.chart { display: block; width: 100%; height: auto; overflow: visible;
   font-family: 'IBM Plex Mono', monospace; }
 svg.chart text { font-variant-numeric: tabular-nums; }
@@ -552,7 +582,7 @@ footer.colophon {
 
     <section class="card">
       <div class="card-head">
-        <h2 class="eyebrow">14 days</h2>
+        <h2 class="eyebrow" id="strip-eyebrow">14 days</h2>
         <p class="sub" id="strip-sub"></p>
         <span class="push"></span>
         <div class="legend" id="strip-legend"></div>
@@ -783,6 +813,25 @@ function initTips() {
 }
 
 /* ---------- svg helpers ------------------------------------------------ */
+
+/* Charts are drawn in a coordinate system that matches CSS pixels, by sizing
+   the viewBox to the container instead of drawing at a fixed 1000 units and
+   letting the browser shrink it. A fixed viewBox meant a 10-unit tick label
+   rendered at 10px on a desktop but 3.1px on a phone - unreadable, and the
+   reason this needed fixing at all. With the viewBox matched to the box, a
+   font size is a real pixel size everywhere.
+
+   Clamped at the top so a very wide window does not stretch labels apart, and
+   at the bottom so the layout maths never divides by something absurd. */
+function chartW(svg, max = 1000, min = 240) {
+  const box = svg.parentElement || svg;
+  const w = Math.round(box.getBoundingClientRect().width) || max;
+  return Math.max(min, Math.min(max, w));
+}
+function sizeChart(svg, W, H) {
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  return W;
+}
 const NS = 'http://www.w3.org/2000/svg';
 function el(tag, attrs = {}) {
   const n = document.createElementNS(NS, tag);
@@ -956,9 +1005,15 @@ function renderHero(intraday, live) {
     cum.push([r[0], ep, ec, en]);
   });
 
-  const W = 1000, H = 432, padL = 48, padR = 16;
-  const A = { top: 20, bot: 236 };      // power
-  const B = { top: 288, bot: 398 };     // energy
+  const W = chartW(svg);
+  const narrow = W < 560;
+  // Panes keep their proportions; the gap between them and the label bands are
+  // what a phone actually needs more of.
+  const H = narrow ? 470 : 432;
+  const padL = narrow ? 40 : 48, padR = 16;
+  const A = { top: 24, bot: narrow ? 250 : 236 };
+  const B = { top: narrow ? 320 : 288, bot: narrow ? 430 : 398 };
+  sizeChart(svg, W, H);
   const X = t => padL + siteSecondsIntoDay(t) / 86400 * (W - padL - padR);
 
   /* Domain for a signed pane: take the data's extent, pick a nice step, then
@@ -995,8 +1050,8 @@ function renderHero(intraday, live) {
         stroke: css('--grid'), 'stroke-width': 1 }));
       if (p === B) text(svg, x, p.bot + 16, lab, { 'text-anchor': 'middle' });
     }
-    text(svg, padL, p.top - 7, title, { 'text-anchor': 'start', 'font-size': 9.5,
-      fill: css('--text-muted'), 'letter-spacing': '0.1em' });
+    text(svg, padL, p.top - 8, title, { 'text-anchor': 'start', 'font-size': 10.5,
+      fill: css('--text-muted'), 'letter-spacing': '0.08em' });
   };
   pane(A, a, Ya, 'POWER · kW', 1);
   pane(B, b, Yb, 'ENERGY SO FAR · kWh', 0);
@@ -1237,11 +1292,17 @@ function renderStrip(history, live) {
   if (!all.length) { $('strip-sub').textContent = 'no data yet'; return; }
 
   const byDate = new Map(all.map(d => [d.date, d]));
+  // Three bars a day cannot survive 14 days on a phone - at 390px that is 7px
+  // per bar with a rotated label on it. Show a week instead; the window still
+  // slides a day at a time, so the fortnight is two swipes away.
+  const chartWidthNow = chartW(svg);
+  const SPAN = chartWidthNow < 560 ? 7 : 14;
+  $('strip-eyebrow').textContent = `${SPAN} days`;
   const dayMs = 86400000;
   const parse = s => new Date(s + 'T12:00:00');
   const newest = parse(all[all.length - 1].date);
   const oldest = parse(all[0].date);
-  const maxOffset = Math.max(0, Math.round((newest - oldest) / dayMs) - 13);
+  const maxOffset = Math.max(0, Math.round((newest - oldest) / dayMs) - (SPAN - 1));
 
   // A requested day becomes the right-hand edge of the window, so you see it
   // together with the fortnight leading up to it.
@@ -1253,7 +1314,7 @@ function renderStrip(history, live) {
 
   const end = new Date(newest.getTime() - STRIP_OFFSET * dayMs);
   const window14 = [];
-  for (let i = 13; i >= 0; i--) {
+  for (let i = SPAN - 1; i >= 0; i--) {
     const d = new Date(end.getTime() - i * dayMs);
     const key = isoLocal(d);
     window14.push({ d, key, row: byDate.get(key) });
@@ -1278,10 +1339,14 @@ function renderStrip(history, live) {
   ];
   legendInto('strip-legend', SERIES.map(s => [s.name, s.color]));
 
-  const W = 1000, H = 340, padL = 46, padR = 12, top = 30, bot = 272;
-  const band = (W - padL - padR) / 14;
+  const W = chartWidthNow;
+  const narrow = W < 560;
+  const H = narrow ? 330 : 340;
+  const padL = narrow ? 36 : 46, padR = 12, top = 32, bot = narrow ? 258 : 272;
+  sizeChart(svg, W, H);
+  const band = (W - padL - padR) / SPAN;
   const gap = 2;                                   // surface gap between bars
-  const barW = Math.max(6, (band - 16 - gap * 2) / 3);
+  const barW = Math.max(5, (band - (narrow ? 10 : 16) - gap * 2) / 3);
 
   let lo = 0, hi = 0.5;
   for (const w of window14) {
@@ -1341,7 +1406,8 @@ function renderStrip(history, live) {
       const t = el('text', {
         x: cx, y: ly, transform: `rotate(-90 ${cx.toFixed(1)} ${ly.toFixed(1)})`,
         'text-anchor': v >= 0 ? 'start' : 'end',
-        'font-size': 8.5, fill: est ? css('--text-muted') : css('--text-secondary'),
+        'font-size': narrow ? 10 : 9.5,
+        fill: est ? css('--text-muted') : css('--text-secondary'),
         'font-style': est ? 'italic' : 'normal',
       });
       t.textContent = (est ? '≈' : '') + fmt(v, Math.abs(v) >= 100 ? 0 : 1);
@@ -1352,11 +1418,11 @@ function renderStrip(history, live) {
   window14.forEach((w, i) => {
     const cx = padL + band * i + band / 2;
     const isNewest = w.key === isoLocal(newest);
-    text(svg, cx, bot + 18, w.d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2), {
-      'text-anchor': 'middle', 'font-size': 9.5,
+    text(svg, cx, bot + 19, w.d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2), {
+      'text-anchor': 'middle', 'font-size': 11,
       fill: w.row ? css('--text-secondary') : css('--text-muted') });
-    text(svg, cx, bot + 31, String(w.d.getDate()), {
-      'text-anchor': 'middle', 'font-size': 10.5,
+    text(svg, cx, bot + 33, String(w.d.getDate()), {
+      'text-anchor': 'middle', 'font-size': 12,
       fill: w.row ? css('--text-primary') : css('--text-muted'),
       'font-weight': isNewest ? 600 : 400 });
   });
@@ -1415,7 +1481,9 @@ function renderMonthly(history) {
   legendInto('monthly-legend', [['Production', PROD], ['Consumption', CONS]]);
   if (!months.length) return;
 
-  const W = 520, H = 240, padL = 44, padR = 8, padT = 12, padB = 30;
+  const W = chartW(svg, 640);
+  const H = 240, padL = 44, padR = 8, padT = 12, padB = 30;
+  sizeChart(svg, W, H);
   const hi = Math.max(...months.flatMap(m => [m.pv_kwh, m.consumption_kwh])) * 1.06 || 1;
   const Y = v => padT + (1 - v / hi) * (H - padT - padB);
   const bandW = (W - padL - padR) / months.length;
@@ -1453,7 +1521,8 @@ function renderMonthly(history) {
       r.addEventListener('mouseleave', () => tip.style.opacity = 0);
       svg.appendChild(r);
     });
-    text(svg, cx, H - padB + 15, monthTick(m.month, i, months), { 'text-anchor': 'middle' });
+    text(svg, cx, H - padB + 15, monthTick(m.month, i, months, Math.floor((W - padL - padR) / 46)),
+      { 'text-anchor': 'middle' });
   });
 
   buildTable($('monthly-table'),
@@ -1467,8 +1536,8 @@ const monthName = ym => `${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`;
 /* Label every month while they fit, then thin out as the archive grows -
    about 14 labels is what the width holds before they touch. The last month
    is always labelled, since it is the one being read. */
-function monthTick(ym, i, months) {
-  const stride = Math.ceil(months.length / 14);
+function monthTick(ym, i, months, room = 14) {
+  const stride = Math.ceil(months.length / Math.max(2, room));
   if (stride > 1 && i % stride !== 0 && i !== months.length - 1) return '';
   const name = MONTHS[+ym.slice(5) - 1];
   const first = i === 0 || ym.slice(0, 4) !== months[i - 1].month.slice(0, 4);
@@ -1481,7 +1550,9 @@ function renderNetGrid(history) {
   clear(svg);
   const months = history.months || [];
   if (!months.length) return;
-  const W = 520, H = 240, padL = 44, padR = 8, padT = 14, padB = 30;
+  const W = chartW(svg, 640);
+  const H = 240, padL = 44, padR = 8, padT = 14, padB = 30;
+  sizeChart(svg, W, H);
 
   const IMP = css('--imp'), EXP = css('--exp');
   const vals = months.map(m => m.net_kwh);
@@ -1516,7 +1587,8 @@ function renderNetGrid(history) {
     });
     r.addEventListener('mouseleave', () => tip.style.opacity = 0);
     svg.appendChild(r);
-    text(svg, cx, H - padB + 15, monthTick(m.month, i, months), { 'text-anchor': 'middle' });
+    text(svg, cx, H - padB + 15, monthTick(m.month, i, months, Math.floor((W - padL - padR) / 46)),
+      { 'text-anchor': 'middle' });
   });
 }
 
@@ -1725,7 +1797,10 @@ function renderYTD(history) {
       imputed: !!d.imputed };
   });
 
-  const W = 1000, H = 300, padL = 52, padR = 68, padT = 16, padB = 26;
+  const W = chartW(svg);
+  const H = W < 560 ? 260 : 300;
+  const padL = 52, padR = W < 560 ? 46 : 68, padT = 16, padB = 26;
+  sizeChart(svg, W, H);
   const y0 = Date.UTC(year, 0, 1), y1 = Date.UTC(year + 1, 0, 1);
   const dayUTC = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
   const X = s => padL + (dayUTC(s) - y0) / (y1 - y0) * (W - padL - padR);
@@ -1743,10 +1818,12 @@ function renderYTD(history) {
   text(svg, padL - 8, padT - 6, 'kWh', { 'text-anchor': 'end' });
 
   // month ticks across the full-year domain
+  const monthStride = Math.ceil(12 / Math.max(2, Math.floor((W - padL - padR) / 34)));
   for (let m = 0; m < 12; m++) {
     const x = padL + (Date.UTC(year, m, 1) - y0) / (y1 - y0) * (W - padL - padR);
     if (m > 0) svg.appendChild(el('line', { x1: x, x2: x, y1: padT, y2: H - padB,
       stroke: css('--grid'), 'stroke-width': 1 }));
+    if (m % monthStride) continue;
     const xm = padL + (Date.UTC(year, m, 15) - y0) / (y1 - y0) * (W - padL - padR);
     text(svg, xm, H - padB + 15, MONTHS[m], { 'text-anchor': 'middle' });
   }
@@ -2433,6 +2510,18 @@ $('forget-btn').addEventListener('click', () => {
 });
 
 initTips();
+
+/* Charts size themselves to their container, so a rotation or a window drag
+   has to redraw them. Debounced, and only when the width actually changed -
+   iOS fires resize when the address bar hides, which changes only height. */
+let lastW = window.innerWidth, resizeTimer = null;
+window.addEventListener('resize', () => {
+  if (window.innerWidth === lastW) return;
+  lastW = window.innerWidth;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (DATA.live) renderAll(); }, 180);
+});
+
 start();
 })();
 </script>
