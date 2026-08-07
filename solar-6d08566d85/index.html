@@ -300,6 +300,12 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
   color: var(--text-primary); background: var(--page);
   border: 1px solid var(--border); border-radius: 6px; padding: 3px 7px;
 }
+/* chip rows under a card head: metric on the left, years on the right */
+.chip-rows { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 12px; }
+.year-chips { margin-bottom: 12px; }
+.chip-rows .year-chips { margin-bottom: 0; margin-left: auto; }
+@media (max-width: 680px) { .chip-rows .year-chips { margin-left: 0; } }
+
 .range-note {
   font-size: 11.5px; color: var(--text-muted); margin: 14px 0 0; line-height: 1.65;
 }
@@ -511,6 +517,13 @@ footer.colophon {
 }
 .gate button { margin-top: 14px; }
 .hidden { display: none !important; }
+.mock-banner {
+  background: color-mix(in srgb, var(--warning) 20%, var(--surface-1));
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  color: var(--text-primary); border-radius: 10px;
+  padding: 9px 14px; margin-bottom: 14px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; letter-spacing: 0.02em;
+}
 </style>
 </head>
 <body>
@@ -521,6 +534,10 @@ footer.colophon {
     <h1>Ironhorse Solar</h1>
     <p id="gate-msg">Decrypting…</p>
     <button class="ghost hidden" id="gate-retry" type="button">Try again</button>
+  </div>
+
+  <div id="mock-banner" class="mock-banner hidden">
+    Mock data — four synthetic years for testing the multi-year views. Nothing here was measured.
   </div>
 
   <div id="app" class="hidden">
@@ -614,7 +631,8 @@ footer.colophon {
           <div class="legend" id="monthly-legend"></div>
           <button class="toggle-table" data-toggle="monthly-table">Table</button>
         </div>
-        <p class="sub" style="font-size:11.5px;color:var(--text-muted);margin:0 0 10px">Whole-month totals — outage catch-up rows are folded in.</p>
+        <div class="presets year-chips" id="monthly-years"></div>
+        <p class="sub" id="monthly-sub" style="font-size:11.5px;color:var(--text-muted);margin:0 0 10px"></p>
         <div class="chart-wrap">
           <svg class="chart" id="monthly" viewBox="0 0 520 240" role="img" aria-label="Monthly production and consumption"></svg>
           <div class="tooltip" id="monthly-tip"></div>
@@ -625,7 +643,7 @@ footer.colophon {
       <section class="card">
         <div class="card-head">
           <h2 class="eyebrow">Net grid</h2>
-          <p class="sub">Above zero you imported power; below it you exported.</p>
+          <p class="sub" id="netgrid-sub"></p>
         </div>
         <div class="chart-wrap">
           <svg class="chart" id="netgrid" viewBox="0 0 520 240" role="img" aria-label="Monthly net grid exchange"></svg>
@@ -636,11 +654,14 @@ footer.colophon {
 
     <section class="card">
       <div class="card-head">
-        <h2 class="eyebrow">Year to date</h2>
+        <h2 class="eyebrow">Cumulative</h2>
         <p class="sub" id="ytd-sub"></p>
         <span class="push"></span>
-        <div class="legend" id="ytd-legend"></div>
         <button class="toggle-table" data-toggle="ytd-table">Table</button>
+      </div>
+      <div class="chip-rows">
+        <div class="presets" id="ytd-metrics"></div>
+        <div class="presets year-chips" id="ytd-years"></div>
       </div>
       <div class="chart-wrap">
         <svg class="chart" id="ytd" viewBox="0 0 1000 300" role="img" aria-label="Cumulative year-to-date energy"></svg>
@@ -1472,22 +1493,113 @@ function renderStrip(history, live) {
     }));
 }
 
-/* ---------- monthly grouped bars ---------------------------------------- */
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const monthName = ym => `${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`;
+
+/* ---------- years --------------------------------------------------------
+   Once there is more than one year of history, "all months ever" stops being a
+   chart and becomes a queue. The monthly pair therefore shows one chosen year
+   on a fixed Jan-Dec axis - fixed so a year always occupies the same
+   horizontal space and can be compared by eye with any other - and the
+   cumulative card overlays whole years against each other.
+
+   Years are ordinal, not categorical, so they are encoded as one hue getting
+   stronger with recency rather than as separate colours. The hue belongs to
+   the measure (production gold, consumption blue, net aqua); the year only
+   moves along it. Every line is also directly labelled, so identity never
+   rests on colour alone. */
+let YEAR_SEL = null;         // null tracks the newest year as data arrives
+let YEAR_COMPARE = false;    // overlay other years on the monthly bars
+let CUM_METRIC = 'pv_kwh';
+let CUM_YEARS = null;        // Set of years; null means "pick sensible defaults"
+let yearsWired = false;
+
+const METRICS = [
+  { key: 'pv_kwh', label: 'Production', color: () => css('--prod') },
+  { key: 'consumption_kwh', label: 'Consumption', color: () => css('--cons') },
+  { key: 'net_kwh', label: 'Net grid', color: () => css('--net') },
+];
+
+function availableYears(history) {
+  const ys = new Set();
+  for (const m of history.months || []) ys.add(+m.month.slice(0, 4));
+  for (const d of dailySeries(history)) ys.add(+d.date.slice(0, 4));
+  return [...ys].sort((a, b) => a - b);
+}
+
+const selectedYear = years => (years.includes(YEAR_SEL) ? YEAR_SEL : years[years.length - 1]);
+
+/* The newest year on screen wears the measure's colour; earlier ones step back
+   into grey, getting fainter with age. Four shades of the same gold turned out
+   to be four lines you cannot tell apart - the useful contrast is between now
+   and the past, not between 2023 and 2024, and the end labels carry the
+   identity anyway. */
+function yearShade(base, i, n) {
+  if (i === n - 1) return base;
+  const pct = 45 + 40 * (n <= 2 ? 1 : i / (n - 2));
+  return `color-mix(in srgb, var(--text-secondary) ${pct.toFixed(0)}%, var(--surface-1))`;
+}
+
+/* A row of small toggle chips, rebuilt whenever the set of years changes. */
+function chipRow(host, items, onPick) {
+  const sig = items.map(i => `${i.key}:${i.on}`).join('|');
+  if (host.dataset.sig === sig) return;
+  host.dataset.sig = sig;
+  clear(host);
+  for (const item of items) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'preset';
+    b.textContent = item.label;
+    b.setAttribute('aria-pressed', String(!!item.on));
+    if (item.color) b.style.borderColor = item.on ? item.color : '';
+    if (item.tip) b.dataset.tip = item.tip;
+    b.addEventListener('click', () => onPick(item));
+    host.appendChild(b);
+  }
+}
+
 function renderMonthly(history) {
   const svg = $('monthly');
   clear(svg);
-  const months = history.months || [];
+  const years = availableYears(history);
+  if (!years.length) return;
+  const year = selectedYear(years);
+  const multi = years.length > 1;
+
+  chipRow($('monthly-years'), [
+    ...years.map(y => ({ key: y, label: String(y), on: y === year })),
+    ...(multi ? [{ key: 'cmp', label: 'compare', on: YEAR_COMPARE,
+      tip: 'Trace the other years’ production over these bars' }] : []),
+  ], item => {
+    if (item.key === 'cmp') YEAR_COMPARE = !YEAR_COMPARE;
+    else { YEAR_SEL = item.key; }
+    renderMonthly(history); renderNetGrid(history);
+  });
+
+  const byYear = {};
+  for (const m of history.months || []) {
+    (byYear[+m.month.slice(0, 4)] ||= {})[+m.month.slice(5) - 1] = m;
+  }
+  const shown = byYear[year] || {};
   const PROD = css('--prod'), CONS = css('--cons');
   legendInto('monthly-legend', [['Production', PROD], ['Consumption', CONS]]);
-  if (!months.length) return;
+  $('monthly-sub').textContent = multi
+    ? `${year} — whole-month totals, outage catch-up rows folded in`
+    : 'Whole-month totals — outage catch-up rows are folded in.';
 
   const W = chartW(svg, 640);
   const H = 240, padL = 44, padR = 8, padT = 12, padB = 30;
   sizeChart(svg, W, H);
-  const hi = Math.max(...months.flatMap(m => [m.pv_kwh, m.consumption_kwh])) * 1.06 || 1;
+
+  // Scale spans every year on screen, so bar heights mean the same thing
+  // whichever year is selected and the comparison lines are honest.
+  const pool = YEAR_COMPARE ? (history.months || [])
+    : Object.values(shown);
+  const hi = Math.max(1, ...pool.flatMap(m => [m.pv_kwh, m.consumption_kwh])) * 1.06;
   const Y = v => padT + (1 - v / hi) * (H - padT - padB);
-  const bandW = (W - padL - padR) / months.length;
-  const barW = Math.min(24, Math.max(4, (bandW - 10) / 2 - 1));
+  const band = (W - padL - padR) / 12;
+  const barW = Math.min(24, Math.max(3, (band - 8) / 2 - 1));
 
   const step = niceStep(hi / 4);
   for (let v = 0; v <= hi; v += step) {
@@ -1502,65 +1614,88 @@ function renderMonthly(history) {
     { name: 'Production', color: PROD, get: m => m.pv_kwh },
     { name: 'Consumption', color: CONS, get: m => m.consumption_kwh },
   ];
-  months.forEach((m, i) => {
-    const cx = padL + bandW * i + bandW / 2;
-    series.forEach((s, j) => {
-      const v = s.get(m);
-      const x = cx - barW - 1 + j * (barW + 2);   // 2px surface gap between the pair
-      const h = Math.max(1, H - padB - Y(v));
-      const r = el('path', { d: barPath(x, H - padB, barW, h, 1), fill: s.color });
-      r.addEventListener('mouseenter', () => {
-        const box = svg.getBoundingClientRect();
-        tip.innerHTML = `<b>${monthName(m.month)}</b>`
-          + series.map(ss => `<div class="row"><span class="sw" style="background:${ss.color}"></span>${ss.name}<span class="num">${fmt(ss.get(m), 0)} kWh</span></div>`).join('')
-          + `<div class="row">metered days<span class="num">${m.days}</span></div>`;
-        tip.style.opacity = 1;
-        tip.style.left = `${cx / W * box.width}px`;
-        tip.style.top = `${Y(Math.max(m.pv_kwh, m.consumption_kwh)) / H * box.height - 8}px`;
+  const labelEvery = Math.ceil(12 / Math.max(2, Math.floor((W - padL - padR) / 30)));
+  for (let mo = 0; mo < 12; mo++) {
+    const cx = padL + band * mo + band / 2;
+    const m = shown[mo];
+    if (m) {
+      series.forEach((s, j) => {
+        const v = s.get(m);
+        const x = cx - barW - 1 + j * (barW + 2);
+        const h = Math.max(1, H - padB - Y(v));
+        const r = el('path', { d: barPath(x, H - padB, barW, h, 1), fill: s.color });
+        r.addEventListener('mouseenter', () => {
+          const box = svg.getBoundingClientRect();
+          tip.innerHTML = `<b>${MONTHS[mo]} ${year}</b>`
+            + series.map(ss => `<div class="row"><span class="sw" style="background:${ss.color}"></span>${ss.name}<span class="num">${fmt(ss.get(m), 0)} kWh</span></div>`).join('')
+            + `<div class="row">net grid<span class="num">${fmt(m.net_kwh, 0)} kWh</span></div>`
+            + `<div class="row">metered days<span class="num">${m.days}</span></div>`;
+          tip.style.opacity = 1;
+          tip.style.left = `${cx / W * box.width}px`;
+          tip.style.top = `${Y(Math.max(m.pv_kwh, m.consumption_kwh)) / H * box.height - 8}px`;
+        });
+        r.addEventListener('mouseleave', () => tip.style.opacity = 0);
+        svg.appendChild(r);
       });
-      r.addEventListener('mouseleave', () => tip.style.opacity = 0);
-      svg.appendChild(r);
+    }
+    if (mo % labelEvery === 0) {
+      text(svg, cx, H - padB + 15, MONTHS[mo], { 'text-anchor': 'middle' });
+    }
+  }
+
+  if (YEAR_COMPARE) {
+    const others = years.filter(y => y !== year);
+    others.forEach((y, i) => {
+      const pts = [];
+      for (let mo = 0; mo < 12; mo++) {
+        const m = (byYear[y] || {})[mo];
+        if (m) pts.push([padL + band * mo + band / 2, Y(m.pv_kwh)]);
+      }
+      if (pts.length < 2) return;
+      const color = yearShade(PROD, i, others.length);
+      svg.appendChild(el('path', {
+        d: pts.map((p, k) => `${k ? 'L' : 'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' '),
+        fill: 'none', stroke: color, 'stroke-width': 1.6,
+        'stroke-dasharray': '4 3', 'stroke-linejoin': 'round' }));
+      const last = pts[pts.length - 1];
+      text(svg, last[0] + 4, last[1] + 3, String(y),
+        { 'font-size': 9.5, fill: css('--text-muted'), 'text-anchor': 'start' });
     });
-    text(svg, cx, H - padB + 15, monthTick(m.month, i, months, Math.floor((W - padL - padR) / 46)),
-      { 'text-anchor': 'middle' });
-  });
+  }
 
   buildTable($('monthly-table'),
     ['Month', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Metered days'],
-    months.slice().reverse().map(m => [m.month, fmt(m.pv_kwh, 0), fmt(m.consumption_kwh, 0),
+    (history.months || []).slice().reverse().map(m => [m.month, fmt(m.pv_kwh, 0),
+      fmt(m.consumption_kwh, 0),
       { v: fmt(m.net_kwh, 0), cls: m.net_kwh < 0 ? 'exp' : '' }, m.days]));
 }
 
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const monthName = ym => `${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`;
-/* Label every month while they fit, then thin out as the archive grows -
-   about 14 labels is what the width holds before they touch. The last month
-   is always labelled, since it is the one being read. */
-function monthTick(ym, i, months, room = 14) {
-  const stride = Math.ceil(months.length / Math.max(2, room));
-  if (stride > 1 && i % stride !== 0 && i !== months.length - 1) return '';
-  const name = MONTHS[+ym.slice(5) - 1];
-  const first = i === 0 || ym.slice(0, 4) !== months[i - 1].month.slice(0, 4);
-  return (first || stride > 1) ? `${name} ${ym.slice(2, 4)}` : name;
-}
-
-/* ---------- net grid: diverging bars ------------------------------------ */
 function renderNetGrid(history) {
   const svg = $('netgrid');
   clear(svg);
-  const months = history.months || [];
-  if (!months.length) return;
+  const years = availableYears(history);
+  if (!years.length) return;
+  const year = selectedYear(years);
+  const byMonth = {};
+  for (const m of history.months || []) {
+    if (+m.month.slice(0, 4) === year) byMonth[+m.month.slice(5) - 1] = m;
+  }
+  $('netgrid-sub').textContent = years.length > 1
+    ? `${year} — above zero you imported power; below it you exported.`
+    : 'Above zero you imported power; below it you exported.';
+
   const W = chartW(svg, 640);
   const H = 240, padL = 44, padR = 8, padT = 14, padB = 30;
   sizeChart(svg, W, H);
 
   const IMP = css('--imp'), EXP = css('--exp');
-  const vals = months.map(m => m.net_kwh);
+  const vals = Object.values(byMonth).map(m => m.net_kwh);
+  if (!vals.length) { text(svg, W / 2, H / 2, `no data for ${year}`, { 'text-anchor': 'middle' }); return; }
   const hi = Math.max(...vals, 0), lo = Math.min(...vals, 0);
   const span = (hi - lo) || 1;
   const Y = v => padT + (1 - (v - lo) / span) * (H - padT - padB);
-  const bandW = (W - padL - padR) / months.length;
-  const barW = Math.min(24, Math.max(6, bandW - 12));
+  const band = (W - padL - padR) / 12;
+  const barW = Math.min(24, Math.max(4, band - 10));
 
   const step = niceStep(span / 4);
   for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) {
@@ -1572,302 +1707,154 @@ function renderNetGrid(history) {
 
   const tip = $('netgrid-tip');
   const zero = Y(0);
-  months.forEach((m, i) => {
-    const v = m.net_kwh;
-    const cx = padL + bandW * i + bandW / 2;
-    const h = Math.max(1, Math.abs(Y(v) - zero));
-    const color = v >= 0 ? IMP : EXP;
-    const r = el('path', { d: barPath(cx - barW / 2, zero, barW, h, v >= 0 ? 1 : -1), fill: color });
-    r.addEventListener('mouseenter', () => {
-      const box = svg.getBoundingClientRect();
-      tip.innerHTML = `<b>${monthName(m.month)}</b><div class="row"><span class="sw" style="background:${color}"></span>${v >= 0 ? 'imported' : 'exported'}<span class="num">${fmt(Math.abs(v), 0)} kWh</span></div>`;
-      tip.style.opacity = 1;
-      tip.style.left = `${cx / W * box.width}px`;
-      tip.style.top = `${(v >= 0 ? Y(v) : zero) / H * box.height - 8}px`;
-    });
-    r.addEventListener('mouseleave', () => tip.style.opacity = 0);
-    svg.appendChild(r);
-    text(svg, cx, H - padB + 15, monthTick(m.month, i, months, Math.floor((W - padL - padR) / 46)),
-      { 'text-anchor': 'middle' });
-  });
-}
-
-/* ---------- sun position ------------------------------------------------
-   Solar azimuth/elevation from UTC time (standard low-precision astronomy,
-   good to well under a degree - plenty for a compass glyph). Coordinates
-   are the approximate site location; nudge them to the rooftop for
-   exactness.                                                             */
-/* Derived from the production archive's sunrise/sunset envelope across
-   seasons (Seattle area — the upstream README's "northeast USA" is the
-   original author's system, not this one). Nudge to the rooftop for
-   exactness. */
-const SITE_LAT = 47.6, SITE_LON = -122.3;
-
-const RAD = Math.PI / 180;
-const daysJ2000 = date => date.getTime() / 86400000 + 2440587.5 - 2451545;
-
-function eqToAltAz(RA, dec, d, lat, lon) {
-  const gmst = 18.697374558 + 24.06570982441908 * d;           // hours
-  const H = (gmst * 15 + lon) * RAD - RA;                      // hour angle
-  const sinEl = Math.sin(lat * RAD) * Math.sin(dec) + Math.cos(lat * RAD) * Math.cos(dec) * Math.cos(H);
-  const el = Math.asin(sinEl);
-  const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(lat * RAD) - Math.tan(dec) * Math.cos(lat * RAD));
-  return { azimuth: ((az / RAD) + 180 + 360) % 360, elevation: el / RAD };
-}
-
-function sunCoords(d) {
-  const g = RAD * (357.529 + 0.98560028 * d);                  // mean anomaly
-  const q = 280.459 + 0.98564736 * d;                          // mean longitude
-  const L = RAD * (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g));
-  const e = RAD * 23.439;
-  return {
-    RA: Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)),
-    dec: Math.asin(Math.sin(e) * Math.sin(L)),
-  };
-}
-
-function moonCoords(d) {
-  // Low-precision lunar ephemeris (Astronomical Algorithms via suncalc);
-  // about a degree of accuracy - plenty for a compass glyph.
-  const L = RAD * (218.316 + 13.176396 * d);   // ecliptic longitude
-  const M = RAD * (134.963 + 13.064993 * d);   // mean anomaly
-  const F = RAD * (93.272 + 13.229350 * d);    // mean distance argument
-  const l = L + RAD * 6.289 * Math.sin(M);
-  const b = RAD * 5.128 * Math.sin(F);
-  const e = RAD * 23.439;
-  return {
-    RA: Math.atan2(Math.sin(l) * Math.cos(e) - Math.tan(b) * Math.sin(e), Math.cos(l)),
-    dec: Math.asin(Math.sin(b) * Math.cos(e) + Math.cos(b) * Math.sin(e) * Math.sin(l)),
-    dist: 385001 - 20905 * Math.cos(M),        // km
-  };
-}
-
-function sunPosition(date, lat, lon) {
-  const d = daysJ2000(date);
-  const s = sunCoords(d);
-  return eqToAltAz(s.RA, s.dec, d, lat, lon);
-}
-
-function moonInfo(date, lat, lon) {
-  const d = daysJ2000(date);
-  const s = sunCoords(d), m = moonCoords(d);
-  const pos = eqToAltAz(m.RA, m.dec, d, lat, lon);
-  // Illuminated fraction from the sun-moon-earth phase angle (suncalc).
-  const sdist = 149598000;
-  const phi = Math.acos(Math.sin(s.dec) * Math.sin(m.dec)
-    + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.RA - m.RA));
-  const inc = Math.atan2(sdist * Math.sin(phi), m.dist - sdist * Math.cos(phi));
-  const angle = Math.atan2(Math.cos(s.dec) * Math.sin(s.RA - m.RA),
-    Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.RA - m.RA));
-  return {
-    ...pos,
-    fraction: (1 + Math.cos(inc)) / 2,
-    waxing: angle < 0,
-  };
-}
-
-const compassPoint = az => ['N','NE','E','SE','S','SW','W','NW'][Math.round(az / 45) % 8];
-
-/* Compass with the sun drawn in the sky: the ring is the horizon, the
-   center is straight up. Plan orientation: up is east, right is south. */
-function buildCompass() {
-  const now = new Date();
-  const { azimuth, elevation } = sunPosition(now, SITE_LAT, SITE_LON);
-  const moon = moonInfo(now, SITE_LAT, SITE_LON);
-  const litPct = Math.round(moon.fraction * 100);
-  const moonDesc = litPct >= 99 ? 'full' : litPct <= 1 ? 'new'
-    : `${litPct}% lit, ${moon.waxing ? 'waxing' : 'waning'}`;
-  const wrap = document.createElement('div');
-  wrap.className = 'compass';
-  wrap.dataset.tip = `<b>Sun</b>` +
-    `<div class="row">azimuth<span class="num">${Math.round(azimuth)}° ${compassPoint(azimuth)}</span></div>` +
-    `<div class="row">elevation<span class="num">${Math.round(elevation)}°</span></div>` +
-    (elevation < 0 ? `<div class="row">below the horizon</div>` : '') +
-    `<b style="display:block;margin-top:5px">Moon</b>` +
-    `<div class="row">azimuth<span class="num">${Math.round(moon.azimuth)}° ${compassPoint(moon.azimuth)}</span></div>` +
-    `<div class="row">elevation<span class="num">${Math.round(moon.elevation)}°</span></div>` +
-    `<div class="row">phase<span class="num">${moonDesc}</span></div>` +
-    (moon.elevation < 0 ? `<div class="row">below the horizon</div>` : '');
-  wrap.setAttribute('aria-label',
-    `Compass: top of the diagram is east, right is south. Sun at azimuth ${Math.round(azimuth)} degrees, elevation ${Math.round(elevation)} degrees. Moon at azimuth ${Math.round(moon.azimuth)} degrees, elevation ${Math.round(moon.elevation)} degrees, ${moonDesc}.`);
-  wrap.tabIndex = 0;
-
-  const S = 100, c = S / 2, r = 36;
-  const svg = el('svg', { viewBox: `0 0 ${S} ${S}`, width: S, height: S, style: 'overflow:visible' });
-  svg.appendChild(el('circle', { cx: c, cy: c, r, fill: 'none', stroke: css('--axis'), 'stroke-width': 1 }));
-  // plan orientation: az 0 (N) left, 90 (E) up, 180 (S) right, 270 (W) down
-  const a = azimuth * Math.PI / 180;
-  const ux = -Math.cos(a), uy = -Math.sin(a);
-  for (const [ch, x, y] of [['E', c, 9], ['S', S - 5, c], ['W', c, S - 4], ['N', 5, c]]) {
-    const t = el('text', { x, y: y + 3.5, 'text-anchor': 'middle', 'font-size': 10,
-      fill: css('--text-muted'), 'font-family': "'IBM Plex Mono', monospace" });
-    t.textContent = ch;
-    svg.appendChild(t);
-  }
-  // the house, at the center of its own sky
-  svg.appendChild(el('path', {
-    d: `M ${c - 6.5} ${c - 1} L ${c} ${c - 7} L ${c + 6.5} ${c - 1} ` +
-       `M ${c - 4.8} ${c - 2.2} L ${c - 4.8} ${c + 6} L ${c + 4.8} ${c + 6} L ${c + 4.8} ${c - 2.2}`,
-    fill: 'none', stroke: css('--text-secondary'), 'stroke-width': 1.4,
-    'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
-  // distance from center encodes elevation: overhead at the center, horizon
-  // on the ring - and a body below the horizon plots just OUTSIDE the ring,
-  // sinking further out the deeper it is
-  const dialXY = (az, elv) => {
-    const a = az * Math.PI / 180;
-    const rho = elv >= 0
-      ? r * (90 - Math.min(elv, 90)) / 90
-      : r + 4 + Math.min(-elv, 60) / 60 * 6;
-    return [c - Math.cos(a) * rho, c - Math.sin(a) * rho];
-  };
-  const [sx, sy] = dialXY(azimuth, elevation);
-
-  // moon first, so the sun stays on top if they ever meet on the dial
-  {
-    const [mx, my] = dialXY(moon.azimuth, moon.elevation);
-    const ghost = moon.elevation < 0;
-    // rotate the glyph so its lit limb faces the sun's position on the dial
-    const theta = Math.atan2(sy - my, sx - mx) * 180 / Math.PI;
-    const g = el('g', {
-      transform: `translate(${mx.toFixed(1)} ${my.toFixed(1)}) rotate(${theta.toFixed(1)})`,
-      opacity: ghost ? 0.55 : 1 });
-    const mr = 3.4, k = Math.abs(2 * moon.fraction - 1);
-    const disc = { cx: 0, cy: 0, r: mr, fill: 'none',
-      stroke: ghost ? css('--text-muted') : css('--axis'), 'stroke-width': 0.8 };
-    if (ghost) disc['stroke-dasharray'] = '1.8 1.4';
-    g.appendChild(el('circle', disc));
-    const ink = ghost ? css('--text-muted') : css('--text-secondary');
-    if (moon.fraction >= 0.99) {
-      g.appendChild(el('circle', { cx: 0, cy: 0, r: mr, fill: ink, opacity: ghost ? 0.45 : 1 }));
-    } else if (moon.fraction > 0.01) {
-      // lit limb is the +x semicircle; the terminator is a half-ellipse whose
-      // width follows the illuminated fraction (crescent bulges sunward,
-      // gibbous bulges away)
-      const sweep = moon.fraction < 0.5 ? 0 : 1;
-      g.appendChild(el('path', {
-        d: `M 0 ${-mr} A ${mr} ${mr} 0 0 1 0 ${mr} A ${(k * mr).toFixed(2)} ${mr} 0 0 ${sweep} 0 ${-mr} Z`,
-        fill: ink, opacity: ghost ? 0.45 : 1 }));
+  const labelEvery = Math.ceil(12 / Math.max(2, Math.floor((W - padL - padR) / 30)));
+  for (let mo = 0; mo < 12; mo++) {
+    const cx = padL + band * mo + band / 2;
+    const m = byMonth[mo];
+    if (m) {
+      const v = m.net_kwh;
+      const h = Math.max(1, Math.abs(Y(v) - zero));
+      const color = v >= 0 ? IMP : EXP;
+      const r = el('path', { d: barPath(cx - barW / 2, zero, barW, h, v >= 0 ? 1 : -1), fill: color });
+      r.addEventListener('mouseenter', () => {
+        const box = svg.getBoundingClientRect();
+        tip.innerHTML = `<b>${MONTHS[mo]} ${year}</b><div class="row"><span class="sw" style="background:${color}"></span>${v >= 0 ? 'imported' : 'exported'}<span class="num">${fmt(Math.abs(v), 0)} kWh</span></div>`;
+        tip.style.opacity = 1;
+        tip.style.left = `${cx / W * box.width}px`;
+        tip.style.top = `${(v >= 0 ? Y(v) : zero) / H * box.height - 8}px`;
+      });
+      r.addEventListener('mouseleave', () => tip.style.opacity = 0);
+      svg.appendChild(r);
     }
-    svg.appendChild(g);
+    if (mo % labelEvery === 0) text(svg, cx, H - padB + 15, MONTHS[mo], { 'text-anchor': 'middle' });
   }
-
-  if (elevation >= 0) {
-    svg.appendChild(el('circle', { cx: sx, cy: sy, r: 7.5, fill: css('--sun'), opacity: 0.25 }));
-    svg.appendChild(el('circle', { cx: sx, cy: sy, r: 3.8, fill: css('--sun') }));
-  } else {
-    // ghost sun: dashed gray disc with rays - unmistakably the sun, plainly set
-    const g = el('g', { transform: `translate(${sx.toFixed(1)} ${sy.toFixed(1)})`, opacity: 0.6 });
-    g.appendChild(el('circle', { r: 3.2, fill: 'none', stroke: css('--text-muted'),
-      'stroke-width': 1, 'stroke-dasharray': '1.8 1.4' }));
-    for (let i = 0; i < 8; i++) {
-      const ra = i * Math.PI / 4;
-      g.appendChild(el('line', {
-        x1: (Math.cos(ra) * 4.6).toFixed(2), y1: (Math.sin(ra) * 4.6).toFixed(2),
-        x2: (Math.cos(ra) * 6).toFixed(2), y2: (Math.sin(ra) * 6).toFixed(2),
-        stroke: css('--text-muted'), 'stroke-width': 1, 'stroke-linecap': 'round' }));
-    }
-    svg.appendChild(g);
-  }
-  wrap.appendChild(svg);
-  return wrap;
 }
 
-/* ---------- year to date: cumulative lines ------------------------------ */
-function renderYTD(history) {
+/* ---------- cumulative, year against year ------------------------------- */
+function renderCumulative(history) {
   const svg = $('ytd');
   clear(svg);
-  const PROD = css('--prod'), CONS = css('--cons'), NET = css('--net');
-  legendInto('ytd-legend', [['Production', PROD], ['Consumption', CONS], ['Net grid', NET]]);
+  const years = availableYears(history);
+  if (!years.length) { $('ytd-sub').textContent = 'no data yet'; return; }
 
-  const allDays = dailySeries(history);
-  if (!allDays.length) { $('ytd-sub').textContent = 'no data yet'; return; }
-  const year = +allDays[allDays.length - 1].date.slice(0, 4);
-  const days = allDays.filter(d => +d.date.slice(0, 4) === year);
-  if (!days.length) return;
+  // Default: everything, which is the comparison you wanted when you opened it.
+  if (!CUM_YEARS) CUM_YEARS = new Set(years);
+  const chosen = years.filter(y => CUM_YEARS.has(y));
+  const metric = METRICS.find(m => m.key === CUM_METRIC) || METRICS[0];
 
-  const estCount = days.filter(d => d.imputed).length;
-  $('ytd-sub').textContent = `Cumulative since Jan 1, ${year}`
-    + (estCount ? ` — the dashed stretch is ${estCount} estimated days` : '');
+  chipRow($('ytd-metrics'), METRICS.map(m => ({
+    key: m.key, label: m.label, on: m.key === CUM_METRIC, color: m.color(),
+  })), item => { CUM_METRIC = item.key; renderCumulative(history); });
 
-  // running sums
-  let p = 0, u = 0, n = 0;
-  const rows = days.map(d => {
-    p += d.pv_kwh || 0; u += d.consumption_kwh || 0; n += d.net_kwh || 0;
-    return { date: d.date, p: +p.toFixed(1), u: +u.toFixed(1), n: +n.toFixed(1),
-      imputed: !!d.imputed };
+  chipRow($('ytd-years'), years.map(y => ({
+    key: y, label: String(y), on: CUM_YEARS.has(y),
+  })), item => {
+    if (CUM_YEARS.has(item.key)) { if (CUM_YEARS.size > 1) CUM_YEARS.delete(item.key); }
+    else CUM_YEARS.add(item.key);
+    renderCumulative(history);
   });
 
-  const W = chartW(svg);
-  const H = W < 560 ? 260 : 300;
-  const padL = 52, padR = W < 560 ? 46 : 68, padT = 16, padB = 26;
-  sizeChart(svg, W, H);
-  const y0 = Date.UTC(year, 0, 1), y1 = Date.UTC(year + 1, 0, 1);
-  const dayUTC = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
-  const X = s => padL + (dayUTC(s) - y0) / (y1 - y0) * (W - padL - padR);
-  const lo = Math.min(0, ...rows.map(r => r.n));
-  const hi = Math.max(1, ...rows.map(r => Math.max(r.p, r.u)));
-  const Y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+  $('ytd-sub').textContent = chosen.length > 1
+    ? `${metric.label.toLowerCase()} accumulated from January 1, ${chosen.length} years overlaid`
+    : `${metric.label.toLowerCase()} accumulated from January 1`;
 
-  const kfmt = v => (Math.round(v) || 0).toLocaleString('en-US');   // || 0 kills "-0"
-  const step = niceStep((hi - lo) / 4);
-  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) {
+  const byYear = {};
+  for (const d of dailySeries(history)) (byYear[+d.date.slice(0, 4)] ||= []).push(d);
+
+  const W = chartW(svg);
+  const narrow = W < 560;
+  const H = narrow ? 260 : 300;
+  const padL = 52, padR = narrow ? 44 : 62, padT = 16, padB = 26;
+  sizeChart(svg, W, H);
+
+  const dayOfYear = s => {
+    const t = Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+    return Math.round((t - Date.UTC(+s.slice(0, 4), 0, 1)) / 86400000);
+  };
+  const X = doy => padL + doy / 365 * (W - padL - padR);
+
+  const curves = chosen.map(y => {
+    let acc = 0;
+    const pts = (byYear[y] || []).map(d => {
+      acc += d[metric.key] || 0;
+      return [dayOfYear(d.date), +acc.toFixed(1)];
+    });
+    return { year: y, pts, end: acc };
+  }).filter(c => c.pts.length);
+  if (!curves.length) { text(svg, W / 2, H / 2, 'no data', { 'text-anchor': 'middle' }); return; }
+
+  let lo = 0, hi = 1;
+  for (const c of curves) for (const p of c.pts) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
+  const step = niceStep((hi - lo) / 5);
+  const sLo = Math.floor(lo / step) * step, sHi = Math.ceil(hi / step) * step;
+  const Y = v => padT + (1 - (v - sLo) / (sHi - sLo || 1)) * (H - padT - padB);
+
+  const kfmt = v => (Math.round(v) || 0).toLocaleString('en-US');
+  for (let v = sLo; v <= sHi + 1e-9; v += step) {
+    const zeroLine = Math.abs(v) < 1e-9;
     svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
-      stroke: Math.abs(v) < 1e-9 ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
+      stroke: zeroLine ? css('--axis') : css('--grid'), 'stroke-width': 1 }));
     text(svg, padL - 8, Y(v) + 3.5, kfmt(v), { 'text-anchor': 'end' });
   }
   text(svg, padL - 8, padT - 6, 'kWh', { 'text-anchor': 'end' });
 
-  // month ticks across the full-year domain
   const monthStride = Math.ceil(12 / Math.max(2, Math.floor((W - padL - padR) / 34)));
   for (let m = 0; m < 12; m++) {
-    const x = padL + (Date.UTC(year, m, 1) - y0) / (y1 - y0) * (W - padL - padR);
-    if (m > 0) svg.appendChild(el('line', { x1: x, x2: x, y1: padT, y2: H - padB,
+    const doy = Math.round((Date.UTC(2001, m, 1) - Date.UTC(2001, 0, 1)) / 86400000);
+    if (m > 0) svg.appendChild(el('line', { x1: X(doy), x2: X(doy), y1: padT, y2: H - padB,
       stroke: css('--grid'), 'stroke-width': 1 }));
     if (m % monthStride) continue;
-    const xm = padL + (Date.UTC(year, m, 15) - y0) / (y1 - y0) * (W - padL - padR);
-    text(svg, xm, H - padB + 15, MONTHS[m], { 'text-anchor': 'middle' });
+    const mid = Math.round((Date.UTC(2001, m, 15) - Date.UTC(2001, 0, 1)) / 86400000);
+    text(svg, X(mid), H - padB + 15, MONTHS[m], { 'text-anchor': 'middle' });
   }
 
-  const series = [
-    { key: 'p', name: 'Production', color: PROD },
-    { key: 'u', name: 'Consumption', color: CONS },
-    { key: 'n', name: 'Net grid', color: NET },
-  ];
-  /* Drawn in runs so the estimated stretch can be dashed: a segment is
-     estimated when the day it arrives at is. */
-  for (const s of series) {
-    let run = [rows[0]], runEst = !!rows[0].imputed;
-    const flush = () => {
-      if (run.length < 2) return;
-      const d = run.map((r, i) => `${i ? 'L' : 'M'} ${X(r.date).toFixed(1)} ${Y(r[s.key]).toFixed(1)}`).join(' ');
-      const attrs = { d, fill: 'none', stroke: s.color, 'stroke-width': 2,
-        'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
-      if (runEst) { attrs['stroke-dasharray'] = '4 3'; attrs.opacity = 0.85; }
-      svg.appendChild(el('path', attrs));
-    };
-    for (let i = 1; i < rows.length; i++) {
-      const est = !!rows[i].imputed;
-      if (est !== runEst) { run.push(rows[i]); flush(); run = [rows[i]]; runEst = est; }
-      else run.push(rows[i]);
-    }
-    flush();
+  const base = metric.color();
+  curves.forEach((c, i) => {
+    const color = yearShade(base, i, curves.length);
+    svg.appendChild(el('path', {
+      d: c.pts.map((p, k) => `${k ? 'L' : 'M'} ${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' '),
+      fill: 'none', stroke: color, 'stroke-width': i === curves.length - 1 ? 2.4 : 1.5,
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  });
+
+  /* End labels, nudged apart. Years that finish close together - which is
+     exactly what a steady system looks like - would otherwise print on top of
+     one another, so each is pushed down until it clears the one above and a
+     leader line ties it back to its own end point. */
+  const ends = curves.map((c, i) => {
+    const last = c.pts[c.pts.length - 1];
+    return { i, year: c.year, x: X(last[0]), y: Y(last[1]), color: yearShade(base, i, curves.length) };
+  }).sort((a, b) => a.y - b.y);
+  const GAP = 13;
+  for (let k = 1; k < ends.length; k++) {
+    if (ends[k].y - ends[k - 1].ly < GAP) ends[k].ly = ends[k - 1].ly + GAP;
+    else ends[k].ly = ends[k].y;
+    if (k === 1 && ends[0].ly === undefined) ends[0].ly = ends[0].y;
   }
-  // endpoint dots + current totals as direct labels
-  const last = rows[rows.length - 1];
-  for (const s of series) {
-    const x = X(last.date), y = Y(last[s.key]);
-    svg.appendChild(el('circle', { cx: x, cy: y, r: 4, fill: s.color,
+  if (ends.length) ends[0].ly = ends[0].ly === undefined ? ends[0].y : ends[0].ly;
+  for (let k = 1; k < ends.length; k++) {
+    ends[k].ly = Math.max(ends[k].ly ?? ends[k].y, ends[k - 1].ly + GAP);
+  }
+  for (const e of ends) {
+    svg.appendChild(el('circle', { cx: e.x, cy: e.y, r: 3.5, fill: e.color,
       stroke: css('--surface-1'), 'stroke-width': 2 }));
-    text(svg, x + 8, y + 3.5, `${kfmt(last[s.key])}`, { 'font-size': 11, fill: css('--text-secondary') });
+    if (Math.abs(e.ly - e.y) > 1.5) {
+      svg.appendChild(el('path', {
+        d: `M ${(e.x + 3).toFixed(1)} ${e.y.toFixed(1)} L ${(e.x + 7).toFixed(1)} ${e.ly.toFixed(1)}`,
+        fill: 'none', stroke: css('--axis'), 'stroke-width': 1 }));
+    }
+    text(svg, e.x + 9, e.ly + 3.5, String(e.year),
+      { 'font-size': 10.5, fill: e.i === curves.length - 1 ? css('--text-primary') : css('--text-muted'),
+        'text-anchor': 'start' });
   }
 
-  // crosshair + tooltip
+  // one crosshair reading every shown year at the same day of the year
   const hair = el('line', { y1: padT, y2: H - padB, stroke: css('--axis'), 'stroke-width': 1, opacity: 0 });
   svg.appendChild(hair);
-  const dots = series.map(s => {
-    const c = el('circle', { r: 4, fill: s.color, stroke: css('--surface-1'), 'stroke-width': 2, opacity: 0 });
-    svg.appendChild(c);
-    return c;
+  const dots = curves.map(() => {
+    const d = el('circle', { r: 3.5, fill: css('--surface-1'), 'stroke-width': 2, opacity: 0 });
+    svg.appendChild(d);
+    return d;
   });
   const tip = $('ytd-tip');
   const hit = el('rect', { x: padL, y: padT, width: W - padL - padR, height: H - padT - padB,
@@ -1876,31 +1863,48 @@ function renderYTD(history) {
   const move = ev => {
     const box = svg.getBoundingClientRect();
     const px = (ev.clientX - box.left) / box.width * W;
-    let best = rows[0], bd = Infinity;
-    for (const r of rows) { const d2 = Math.abs(X(r.date) - px); if (d2 < bd) { bd = d2; best = r; } }
-    hair.setAttribute('x1', X(best.date)); hair.setAttribute('x2', X(best.date)); hair.setAttribute('opacity', 1);
-    series.forEach((s, i) => {
-      dots[i].setAttribute('cx', X(best.date)); dots[i].setAttribute('cy', Y(best[s.key]));
-      dots[i].setAttribute('opacity', 1);
+    const doy = Math.max(0, Math.min(365, Math.round((px - padL) / (W - padL - padR) * 365)));
+    hair.setAttribute('x1', X(doy)); hair.setAttribute('x2', X(doy)); hair.setAttribute('opacity', 1);
+    const when = new Date(Date.UTC(2001, 0, 1) + doy * 86400000);
+    let html = `<b>${MONTHS[when.getUTCMonth()]} ${when.getUTCDate()}</b>`;
+    curves.forEach((c, i) => {
+      let best = null;
+      for (const p of c.pts) { if (p[0] <= doy) best = p; else break; }
+      const color = yearShade(base, i, curves.length);
+      if (best) {
+        dots[i].setAttribute('cx', X(best[0])); dots[i].setAttribute('cy', Y(best[1]));
+        dots[i].setAttribute('stroke', color); dots[i].setAttribute('opacity', 1);
+      } else dots[i].setAttribute('opacity', 0);
+      html += `<div class="row"><span class="sw" style="background:${color}"></span>${c.year}`
+        + `<span class="num">${best ? kfmt(best[1]) : '—'} kWh</span></div>`;
     });
-    const dt = new Date(dayUTC(best.date));
-    tip.innerHTML = `<b>${MONTHS[dt.getUTCMonth()]} ${dt.getUTCDate()}</b>`
-      + series.map(s => `<div class="row"><span class="sw" style="background:${s.color}"></span>${s.name}<span class="num">${kfmt(best[s.key])} kWh</span></div>`).join('');
+    tip.innerHTML = html;
     tip.style.opacity = 1;
-    tip.style.left = `${X(best.date) / W * box.width}px`;
-    tip.style.top = `${Y(Math.max(best.p, best.u)) / H * box.height - 12}px`;
+    tip.style.left = `${X(doy) / W * box.width}px`;
+    tip.style.top = `${padT / H * box.height}px`;
   };
   hit.addEventListener('mousemove', move);
   hit.addEventListener('touchmove', e => { move(e.touches[0]); e.preventDefault(); }, { passive: false });
   hit.addEventListener('mouseleave', () => {
-    tip.style.opacity = 0; hair.setAttribute('opacity', 0); dots.forEach(d => d.setAttribute('opacity', 0));
+    tip.style.opacity = 0; hair.setAttribute('opacity', 0);
+    dots.forEach(d => d.setAttribute('opacity', 0));
   });
 
+  // table twin: cumulative at each month end, a column per year
+  const monthEnds = curves.map(c => {
+    const out = [];
+    for (let m = 0; m < 12; m++) {
+      const doy = Math.round((Date.UTC(2001, m + 1, 0) - Date.UTC(2001, 0, 1)) / 86400000);
+      let best = null;
+      for (const p of c.pts) { if (p[0] <= doy) best = p; else break; }
+      out.push(best ? best[1] : null);
+    }
+    return out;
+  });
   buildTable($('ytd-table'),
-    ['Date', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)'],
-    rows.slice().reverse().map(r => [
-      r.date, kfmt(r.p), kfmt(r.u), { v: kfmt(r.n), cls: r.n < 0 ? 'exp' : '' },
-    ]));
+    ['Month end', ...curves.map(c => `${c.year} (kWh)`)],
+    MONTHS.map((name, m) => [name,
+      ...monthEnds.map(col => col[m] === null ? '—' : kfmt(col[m]))]));
 }
 
 /* ---------- range totals -------------------------------------------------
@@ -2350,6 +2354,167 @@ function buildTable(host, headers, rows, sortable = false) {
   host.appendChild(table);
 }
 
+/* ---------- mock data ----------------------------------------------------
+   Four calendar years of synthetic history, for developing and checking the
+   multi-year views before the real archive is old enough to exercise them.
+   Reached with ?mock on the URL; it never touches the network, needs no
+   decryption key, and paints a banner so it cannot be mistaken for real data.
+
+   Calibrated against this site's actual months (Jun 1386, May 1229, Mar 572,
+   Jan 242, Nov 214 kWh produced; consumption 450-1015): a clear-sky seasonal
+   curve for 47.6 N, knocked down by a cloudiness factor that is harshest in
+   midwinter, then varied per year, per month and per day so the years differ
+   from each other the way real ones do - which is the whole point of a
+   comparison view. Consumption is a seasonal base plus EV charging events,
+   which is what makes this household's load spiky rather than smooth.       */
+const MOCK_YEARS = 4;
+
+function mulberry32(seed) {          // small deterministic PRNG: same mock every reload
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function buildMockData() {
+  const rnd = mulberry32(20260807);
+  const today = new Date();
+  const start = new Date(today.getFullYear() - (MOCK_YEARS - 1), 0, 1);
+
+  const doyOf = d => Math.round((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
+  const season = doy => Math.cos(2 * Math.PI * (doy - 172) / 365);
+
+  // per-year and per-month character, so no two years lie on top of each other
+  const yearF = {}, monthF = {};
+  for (let y = start.getFullYear(); y <= today.getFullYear(); y++) {
+    yearF[y] = 0.92 + rnd() * 0.16;
+    for (let m = 0; m < 12; m++) monthF[`${y}-${m}`] = 0.86 + rnd() * 0.28;
+  }
+
+  const days = [];
+  for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+    const doy = doyOf(d), s = season(doy);
+    const y = d.getFullYear(), mo = d.getMonth();
+    const clear = 31 + 21 * s;                  // kWh a cloudless day would make
+    const cloud = 0.74 + 0.18 * s;              // Seattle: bleak Nov-Feb, bright Jul
+    const spread = 0.5 - 0.25 * s;              // winter days vary far more
+    const noise = Math.max(0.12, Math.min(1.35, 1 + (rnd() - 0.5) * 2 * spread));
+    const pv = clear * cloud * noise * yearF[y] * monthF[`${y}-${mo}`];
+
+    const weekend = d.getDay() === 0 || d.getDay() === 6;
+    const base = 18.5 - 6 * s + (weekend ? 3 : 0);  // heating dominates the winter base
+    const ev = rnd() < 0.30 ? 12 + rnd() * 16 : 0; // charging is an event, not a trend
+    const cons = base * (0.85 + rnd() * 0.3) + ev;
+
+    days.push({
+      date: isoLocal(d),
+      pv_kwh: +pv.toFixed(2),
+      consumption_kwh: +cons.toFixed(2),
+      net_kwh: +(cons - pv).toFixed(2),
+      inverters: 25,
+      hours: 24,
+      alerts: '',
+    });
+  }
+
+  const monthly = new Map();
+  for (const r of days) {
+    const key = r.date.slice(0, 7);
+    const b = monthly.get(key) || { month: key, pv_kwh: 0, consumption_kwh: 0, net_kwh: 0, days: 0 };
+    b.pv_kwh += r.pv_kwh; b.consumption_kwh += r.consumption_kwh; b.net_kwh += r.net_kwh; b.days++;
+    monthly.set(key, b);
+  }
+  const months = [...monthly.values()].map(m => ({
+    ...m,
+    pv_kwh: +m.pv_kwh.toFixed(1),
+    consumption_kwh: +m.consumption_kwh.toFixed(1),
+    net_kwh: +m.net_kwh.toFixed(1),
+  }));
+
+  // 14 days of 5-minute samples, so the day view and the bar strip work too
+  const rows = [];
+  const lastDays = days.slice(-14);
+  for (const r of lastDays) {
+    const midnight = new Date(`${r.date}T00:00:00`);
+    for (let i = 0; i < 288; i++) {
+      const t = Math.round(midnight.getTime() / 1000) + i * 300;
+      const hour = i / 12;
+      // a bell around solar noon, scaled so the day integrates to its total
+      const shape = Math.max(0, Math.sin(Math.PI * (hour - 5.5) / 13));
+      const pvKw = shape * shape * r.pv_kwh / 5.2;
+      const spike = rnd() < 0.012 ? 4 + rnd() * 7 : 0;
+      const consKw = 0.35 + 0.25 * Math.sin(hour / 3) + spike + (hour > 17 ? 0.6 : 0);
+      rows.push([t, +pvKw.toFixed(3), +consKw.toFixed(3), +(consKw - pvKw).toFixed(3)]);
+    }
+  }
+  const nowSec = Math.floor(Date.now() / 1000);
+  const todayRows = rows.filter(r => dayKey(r[0]) === dayKey(nowSec) && r[0] <= nowSec);
+  const cur = todayRows[todayRows.length - 1] || rows[rows.length - 1];
+
+  const serials = ROOF.flatMap(s => s.tails || []).map(t => `E00122143${t}`);
+  const todayTotal = days[days.length - 1];
+  const invList = serials.map((serial, i) => {
+    // one chronic underperformer, as on the real array
+    const share = (serial.endsWith('043268') ? 0.76 : 0.98 + rnd() * 0.04) / 25;
+    return {
+      serial,
+      state: 'working',
+      kw: +(cur[1] * share).toFixed(3),
+      lifetime_kwh: +(1500 + rnd() * 300).toFixed(1),
+      today_kwh: +(todayTotal.pv_kwh * share).toFixed(2),
+      pct_of_avg: serial.endsWith('043268') ? 76 : Math.round(98 + rnd() * 4),
+    };
+  });
+
+  const invDates = days.slice(-120).map(d => d.date);
+  const series = {};
+  for (const s of serials) {
+    series[s] = invDates.map(d => {
+      const day = days.find(x => x.date === d);
+      const share = (s.endsWith('043268') ? 0.76 : 0.99) / 25;
+      return +(day.pv_kwh * share).toFixed(2);
+    });
+  }
+
+  return {
+    live: {
+      generated: new Date().toISOString().slice(0, 19),
+      latest_sample: new Date(cur[0] * 1000).toISOString().slice(0, 19).replace('T', ' '),
+      latest_epoch: cur[0],
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      age_minutes: 2,
+      status: 'ok',
+      current: { pv_kw: cur[1], consumption_kw: cur[2], net_kw: cur[3] },
+      today: {
+        date: todayTotal.date,
+        pv_kwh: todayTotal.pv_kwh,
+        consumption_kwh: todayTotal.consumption_kwh,
+        net_kwh: todayTotal.net_kwh,
+        hours: 24, samples: todayRows.length,
+      },
+      lifetime: {
+        pv_kwh: +days.reduce((a, d) => a + d.pv_kwh, 0).toFixed(1),
+        consumption_kwh: +days.reduce((a, d) => a + d.consumption_kwh, 0).toFixed(1),
+      },
+      inverters: invList,
+      meters: {
+        timestamp: new Date(cur[0] * 1000).toISOString().slice(0, 19).replace('T', ' '),
+        production: { serial: 'MOCK000000p', kw: cur[1], lifetime_net_kwh: 44000 },
+        consumption: { serial: 'MOCK000000c', kw: cur[2], lifetime_net_kwh: 41000,
+          lifetime_pos_kwh: 41000, lifetime_neg_kwh: 0 },
+        frequency_hz: 60, voltage_v: 249.5,
+      },
+      alerts: [{ level: 'info', text: 'Mock data — four synthetic years, nothing here was measured.' }],
+    },
+    intraday: { generated: '', days: 14, tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      columns: ['t', 'pv_kw', 'consumption_kw', 'net_kw'], rows },
+    history: { generated: '', days, months, imputed: [] },
+    inverters: { generated: '', dates: invDates, series },
+  };
+}
+
 /* ---------- orchestration ---------------------------------------------- */
 async function load(initial = false) {
   const app = $('app');
@@ -2401,7 +2566,7 @@ function renderAll() {
   renderStrip(DATA.history || {}, live);
   renderMonthly(DATA.history || { months: [] });
   renderNetGrid(DATA.history || { months: [] });
-  renderYTD(DATA.history || { days: [] });
+  renderCumulative(DATA.history || { days: [] });
   renderRange(DATA.history || { days: [] }, live);
   renderArray(live);
   renderSystemNotes(live);
@@ -2455,6 +2620,14 @@ async function boot() {
 let FROM_FRAGMENT = false;
 
 async function start() {
+  if (new URLSearchParams(location.search).has('mock')) {
+    DATA = buildMockData();
+    document.getElementById('mock-banner').classList.remove('hidden');
+    $('gate').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    renderAll();
+    return;                       // no key, no network, no refresh loop
+  }
   const { material, fromFragment } = readKeyMaterial();
   FROM_FRAGMENT = fromFragment;
   KEY_MATERIAL = material;
