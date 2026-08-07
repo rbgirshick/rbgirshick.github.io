@@ -1585,7 +1585,8 @@ function renderMonthly(history) {
   const multi = years.length > 1;
 
   chipRow($('monthly-years'), [
-    ...years.map(y => ({ key: y, label: String(y), on: y === year })),
+    // newest first, matching every other year listing on the page
+    ...[...years].reverse().map(y => ({ key: y, label: String(y), on: y === year })),
     ...(multi ? [{ key: 'cmp', label: 'compare', on: YEAR_COMPARE,
       tip: 'Trace the other years over these bars, and add them to the hover' }] : []),
   ], item => {
@@ -1714,7 +1715,8 @@ function renderMonthly(history) {
       } else {
         html += '<div class="row">no data this month</div>';
       }
-      for (const y of others) {
+      // newest first: the most recent year is the one being compared against
+      for (const y of [...others].reverse()) {
         const o = (byYear[y] || {})[mo];
         if (!o) { html += `<div class="row" style="color:var(--text-muted)">${y}<span class="num">—</span></div>`; continue; }
         const pct = m && m.pv_kwh ? Math.round((o.pv_kwh / m.pv_kwh - 1) * 100) : null;
@@ -1752,7 +1754,7 @@ function renderCumulative(history) {
   const chosen = years.filter(y => CUM_YEARS.has(y));
   legendInto('ytd-legend', METRICS.map(m => [m.label, m.color()]));
 
-  chipRow($('ytd-years'), years.map(y => ({
+  chipRow($('ytd-years'), [...years].reverse().map(y => ({
     key: y, label: String(y), on: CUM_YEARS.has(y),
   })), item => {
     if (CUM_YEARS.has(item.key)) { if (CUM_YEARS.size > 1) CUM_YEARS.delete(item.key); }
@@ -1795,6 +1797,11 @@ function renderCumulative(history) {
     });
   }
   if (!curves.length) { text(svg, W / 2, H / 2, 'no data', { 'text-anchor': 'middle' }); return; }
+
+  /* Draw order stays oldest-to-newest so the current year lands on top and the
+     shading steps correctly; everything the reader *lists* uses this instead,
+     grouped by measure with the newest year first. */
+  const ordered = METRICS.flatMap(metric => curves.filter(c => c.metric === metric).reverse());
 
   let lo = 0, hi = 1;
   for (const c of curves) for (const p of c.pts) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
@@ -1878,21 +1885,29 @@ function renderCumulative(history) {
     hair.setAttribute('x1', X(doy)); hair.setAttribute('x2', X(doy)); hair.setAttribute('opacity', 1);
     const when = new Date(Date.UTC(2001, 0, 1) + doy * 86400000);
     let html = `<b>${MONTHS[when.getUTCMonth()]} ${when.getUTCDate()}</b>`;
-    let lastMetric = null;
-    curves.forEach((c, i) => {
+    const at = c => {
       let best = null;
       for (const p of c.pts) { if (p[0] <= doy) best = p; else break; }
+      return best;
+    };
+    curves.forEach((c, i) => {          // dots follow draw order, so indexes line up
+      const best = at(c);
       if (best) {
         dots[i].setAttribute('cx', X(best[0])); dots[i].setAttribute('cy', Y(best[1]));
         dots[i].setAttribute('stroke', c.color); dots[i].setAttribute('opacity', 1);
       } else dots[i].setAttribute('opacity', 0);
+    });
+    // read out grouped by measure, newest year first inside each group
+    let lastMetric = null;
+    for (const c of ordered) {
       if (c.metric !== lastMetric) {
         lastMetric = c.metric;
         html += `<div style="color:var(--text-muted);margin-top:3px">${c.metric.label}</div>`;
       }
+      const best = at(c);
       html += `<div class="row"><span class="sw" style="background:${c.color}"></span>${c.year}`
         + `<span class="num">${best ? kfmt(best[1]) : '—'} kWh</span></div>`;
-    });
+    }
     tip.innerHTML = html;
     tip.style.opacity = 1;
     tip.style.left = `${X(doy) / W * box.width}px`;
@@ -1906,7 +1921,7 @@ function renderCumulative(history) {
   });
 
   // table twin: cumulative at each month end, a column per year
-  const monthEnds = curves.map(c => {
+  const monthEnds = ordered.map(c => {
     const out = [];
     for (let m = 0; m < 12; m++) {
       const doy = Math.round((Date.UTC(2001, m + 1, 0) - Date.UTC(2001, 0, 1)) / 86400000);
@@ -1917,7 +1932,7 @@ function renderCumulative(history) {
     return out;
   });
   buildTable($('ytd-table'),
-    ['Month end', ...curves.map(c => `${c.year} ${c.metric.label.toLowerCase()} (kWh)`)],
+    ['Month end', ...ordered.map(c => `${c.year} ${c.metric.label.toLowerCase()} (kWh)`)],
     MONTHS.map((name, m) => [name,
       ...monthEnds.map(col => col[m] === null ? '—' : kfmt(col[m]))]));
 }
