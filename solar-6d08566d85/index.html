@@ -1497,9 +1497,10 @@ const monthName = ym => `${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`;
    moves along it. Every line is also directly labelled, so identity never
    rests on colour alone. */
 let YEAR_SEL = null;         // null tracks the newest year as data arrives
-let YEAR_COMPARE = false;    // overlay other years on the monthly bars
+let YEAR_COMPARE = true;     // overlay other years on the monthly bars
 let CUM_METRIC = 'pv_kwh';
 let CUM_YEARS = null;        // Set of years; null means "pick sensible defaults"
+let CUM_COMPARE = true;      // overlay earlier years on the cumulative curves
 let yearsWired = false;
 
 const METRICS = [
@@ -1777,13 +1778,23 @@ function renderCumulative(history) {
   if (!CUM_YEARS) CUM_YEARS = new Set(years);
   for (const y of [...CUM_YEARS]) if (!years.includes(y)) CUM_YEARS.delete(y);
   if (!CUM_YEARS.size) CUM_YEARS = new Set(years);
-  const chosen = years.filter(y => CUM_YEARS.has(y));
   legendInto('ytd-legend', METRICS.map(m => [m.label, m.color()]));
 
-  chipRow($('ytd-years'), [...years].reverse().map(y => ({
-    key: y, label: String(y), on: CUM_YEARS.has(y),
-  })), item => {
-    if (CUM_YEARS.has(item.key)) { if (CUM_YEARS.size > 1) CUM_YEARS.delete(item.key); }
+  const multi = years.length > 1;
+  const newest = years[years.length - 1];
+  // With comparison off this is just this year's running total; the year chips
+  // only mean anything once there is more than one curve, so they go away.
+  const chosen = (multi && CUM_COMPARE) ? years.filter(y => CUM_YEARS.has(y)) : [newest];
+
+  chipRow($('ytd-years'), !multi ? [] : [
+    ...(CUM_COMPARE ? [...years].reverse().map(y => ({
+      key: y, label: String(y), on: CUM_YEARS.has(y),
+    })) : []),
+    { key: 'cmp', label: 'compare', on: CUM_COMPARE,
+      tip: 'Overlay the earlier years on these curves' },
+  ], item => {
+    if (item.key === 'cmp') CUM_COMPARE = !CUM_COMPARE;
+    else if (CUM_YEARS.has(item.key)) { if (CUM_YEARS.size > 1) CUM_YEARS.delete(item.key); }
     else CUM_YEARS.add(item.key);
     renderCumulative(history);
   });
@@ -1796,7 +1807,7 @@ function renderCumulative(history) {
     ? `${allYears[allYears.length - 1]} so far — records begin mid-year, so there is nothing to compare against yet`
     : (chosen.length > 1
       ? `accumulated from January 1 — ${chosen.length} years overlaid, older years fainter${dropped}`
-      : `accumulated from January 1${dropped}`);
+      : `${newest} accumulated from January 1${multi ? ', comparison off' : ''}${dropped}`);
 
   const W = chartW(svg);
   const narrow = W < 560;
