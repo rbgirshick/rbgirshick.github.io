@@ -1074,15 +1074,20 @@ function renderHero(intraday, live) {
      inside the raw extent can leave the whole export half unlabelled (a -19
      minimum with a step of 20 has no tick at all). Zero is a multiple of every
      step, so it is always drawn. */
-  const scale = (data, keys) => {
+  const scale = (data, keys, extra = []) => {
     let lo = 0, hi = 0;
     for (const r of data) for (const k of keys) { lo = Math.min(lo, r[k]); hi = Math.max(hi, r[k]); }
+    for (const v of extra) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     hi = Math.max(hi, lo + 0.5);
     const step = niceStep((hi - lo) / 5);
     return { lo: Math.floor(lo / step) * step, hi: Math.ceil(hi / step) * step, step };
   };
   const a = scale(rows, [1, 2, 3]);
-  const b = scale(cum, [1, 2, 3]);
+  // only today gets a forecast: a finished day has nothing left to predict
+  const fc = (isNewest && live.forecast && live.forecast.kwh) ? live.forecast : null;
+  // the pane's range becomes the whole day's, which is the point: the actual
+  // line is then read as a fraction of where the day is heading
+  const b = scale(cum, [1, 2, 3], fc ? [fc.kwh] : []);
   const Ya = v => A.top + (1 - (v - a.lo) / (a.hi - a.lo)) * (A.bot - A.top);
   const Yb = v => B.top + (1 - (v - b.lo) / (b.hi - b.lo)) * (B.bot - B.top);
 
@@ -1124,6 +1129,53 @@ function renderHero(intraday, live) {
 
   const stroke = (d, color) => svg.appendChild(el('path', { d, fill: 'none', stroke: color,
     'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+
+  /* Expected production for today, drawn first so the real line sits on top.
+
+     The total comes from the Pi: the day's forecast sunshine times a
+     coefficient refitted daily against this array's own history. The SHAPE
+     comes from the sun itself - expected output at any moment is taken as
+     proportional to the sine of solar elevation, which is the geometry the
+     panels actually see, so no extra data is needed and the curve bends
+     correctly with the season. Together they answer the question the number
+     alone cannot: not just "how much today", but "am I ahead or behind right
+     now". */
+  if (fc) {
+    const midnight = rows[0][0] - siteSecondsIntoDay(rows[0][0]);
+    const pts = [];
+    let running = 0;
+    const weights = [];
+    for (let i = 0; i <= 288; i++) {
+      const at = midnight + i * 300;
+      const secs = siteSecondsIntoDay(at);
+      if (i && secs === 0) break;                 // wrapped past midnight
+      const el0 = sunPosition(new Date(at * 1000), SITE_LAT, SITE_LON).elevation;
+      weights.push([secs, Math.max(0, Math.sin(el0 * Math.PI / 180))]);
+    }
+    const totalW = weights.reduce((acc, w) => acc + w[1], 0) || 1;
+    for (const [secs, w] of weights) {
+      running += w;
+      pts.push([padL + secs / 86400 * (W - padL - padR), Yb(fc.kwh * running / totalW)]);
+    }
+    if (pts.length > 1) {
+      svg.appendChild(el('path', {
+        d: pts.map((q, i) => `${i ? 'L' : 'M'} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join(' '),
+        fill: 'none', stroke: css('--prod'), 'stroke-width': 1.5, 'stroke-opacity': 0.55,
+        'stroke-dasharray': '5 4', 'stroke-linejoin': 'round' }));
+      const end = pts[pts.length - 1];
+      const lab = text(svg, end[0] - 4, end[1] - 6, `≈${fmt(fc.kwh, 0)} expected`,
+        { 'font-size': 10, fill: css('--text-muted'), 'text-anchor': 'end' });
+      lab.dataset.tip = '<b>Expected today</b>'
+        + `<div class="row">forecast<span class="num">${fmt(fc.kwh, 1)} kWh</span></div>`
+        + (fc.low !== undefined
+          ? `<div class="row">likely range<span class="num">${fmt(fc.low, 1)}–${fmt(fc.high, 1)} kWh</span></div>` : '')
+        + `<div class="row">typical error<span class="num">±${fmt(fc.mae_kwh, 1)} kWh</span></div>`
+        + `<div class="row">fit<span class="num">r² ${fmt(fc.r2, 2)}, ${fc.days} days</span></div>`
+        + '<div style="color:var(--text-muted);margin-top:3px">the day\'s forecast sunshine times '
+        + 'this array\'s own measured yield; the curve follows the sun\'s elevation</div>';
+      lab.style.cursor = 'help';
+    }
+  }
   stroke(path(rows, 3, Ya), NET);
   stroke(path(rows, 2, Ya), CONS);
   stroke(path(rows, 1, Ya), PROD);
@@ -1131,15 +1183,32 @@ function renderHero(intraday, live) {
   stroke(path(cum, 2, Yb), CONS);
   stroke(path(cum, 1, Yb), PROD);
 
-  // end labels on the energy pane - the day's running totals
+  /* End labels on the energy pane - the day's running totals, nudged apart.
+     They sit close together early in the day, and closer still once the axis
+     stretches to the forecast, so each is pushed down until it clears the one
+     above; the dot stays on the true value. */
   const lastCum = cum[cum.length - 1];
-  [[1, PROD], [2, CONS], [3, NET]].forEach(([k]) => {
-    const y = Yb(lastCum[k]);
-    svg.appendChild(el('circle', { cx: X(lastCum[0]), cy: y, r: 3.5, fill: css('--surface-1'),
-      stroke: [null, PROD, CONS, NET][k], 'stroke-width': 2 }));
-    text(svg, X(lastCum[0]) + 7, y + 3.5, fmt(lastCum[k], 1),
-      { 'font-size': 10, fill: css('--text-secondary'), 'text-anchor': 'start' });
+  const cx = X(lastCum[0]);
+  const marks = [[1, PROD], [2, CONS], [3, NET]]
+    .map(([k, color]) => ({ y: Yb(lastCum[k]), value: lastCum[k], color }))
+    .sort((p, q) => p.y - q.y);
+  const GAP = 12;
+  marks.forEach((m, k) => {
+    m.ly = k ? Math.max(m.y, marks[k - 1].ly + GAP) : m.y;
   });
+  // if that pushed the stack past the axis, slide the whole thing back up
+  const over = marks[marks.length - 1].ly - B.bot;
+  if (over > 0) for (const m of marks) m.ly -= over;
+  for (const m of marks) {
+    svg.appendChild(el('circle', { cx, cy: m.y, r: 3.5, fill: css('--surface-1'),
+      stroke: m.color, 'stroke-width': 2 }));
+    if (Math.abs(m.ly - m.y) > 1.5) {
+      svg.appendChild(el('line', { x1: cx + 4, y1: m.y, x2: cx + 6, y2: m.ly,
+        stroke: m.color, 'stroke-width': 1, opacity: 0.5 }));
+    }
+    text(svg, cx + 7, m.ly + 3.5, fmt(m.value, 1),
+      { 'font-size': 10, fill: css('--text-secondary'), 'text-anchor': 'start' });
+  }
 
   // the sun, riding the current edge of the day
   const sx = X(last[0]), sy = Ya(last[1]);
@@ -2845,6 +2914,8 @@ function buildMockData() {
           sunrise: `${todayTotal.date}T05:58`, sunset: `${todayTotal.date}T20:31`,
           radiation_kwh_m2: 6.5, precip_chance: 8, cloud_pct: 32 },
       },
+      // what the fitted model would predict from that 6.5 kWh/m² of sunshine
+      forecast: { kwh: 45.6, low: 42.6, high: 48.6, r2: 0.949, mae_kwh: 3.0, days: 274 },
       meters: {
         timestamp: new Date(cur[0] * 1000).toISOString().slice(0, 19).replace('T', ' '),
         production: { serial: 'MOCK000000p', kw: cur[1], lifetime_net_kwh: 44000 },
