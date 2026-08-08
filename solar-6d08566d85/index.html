@@ -665,7 +665,7 @@ footer.colophon {
       </div>
       <div class="roof-scroll"><div class="roof" id="array"></div></div>
       <div class="array-foot">
-        <span>today, less</span>
+        <span>producing now, less</span>
         <span class="ramp" id="array-ramp"></span>
         <span>more</span>
       </div>
@@ -1640,7 +1640,11 @@ function renderMonthly(history) {
       fill: css('--text-muted'), 'letter-spacing': '0.08em' });
   };
   gridFor(A, 0, aHi, niceStep(aHi / 4), Ya, 'ENERGY · kWh');
-  gridFor(B, bBot, bTop, bStep, Yb, 'NET GRID · kWh — above zero imported, below exported');
+  // the tail of this title runs off a phone; the zero line and the diverging
+  // colours already say it, so narrow screens get the short form
+  gridFor(B, bBot, bTop, bStep, Yb, narrow
+    ? 'NET GRID · kWh'
+    : 'NET GRID · kWh — above zero imported, below exported');
 
   const series = [
     { name: 'Production', color: PROD, key: 'pv_kwh' },
@@ -2359,7 +2363,7 @@ function renderArray(live) {
   clear(box);
   const list = live.inverters || [];
   $('array-sub').textContent =
-    `${list.length} microinverters in three strings, drawn as they sit on the roof · shaded by today's production`;
+    `${list.length} microinverters in three strings, drawn as they sit on the roof · shaded by output right now`;
 
   const ramp = ['--amber-100', '--amber-250', '--amber-400'].map(css);
   const rampBox = $('array-ramp');
@@ -2370,7 +2374,12 @@ function renderArray(live) {
     rampBox.appendChild(i);
   }
 
-  const vals = list.map(i => i.today_kwh).filter(v => v !== null && v !== undefined);
+  /* Shaded by what each panel is producing right now, not by the day's energy.
+     Cumulative energy converges as a day goes on, so by evening every panel is
+     the same shade and the picture says nothing; instantaneous power keeps the
+     roof live - you can watch shade cross it, and a panel that has dropped out
+     goes pale immediately rather than hours later. */
+  const vals = list.map(i => i.kw).filter(v => v !== null && v !== undefined);
   const max = Math.max(...vals, 0.001);
   const bySerialTail = new Map(list.map(inv => [inv.serial.slice(-6), inv]));
 
@@ -2383,12 +2392,13 @@ function renderArray(live) {
       cell.tabIndex = 0;
       return cell;
     }
-    const v = inv.today_kwh;
-    if (v !== null && v !== undefined) {
-      const idx = Math.min(ramp.length - 1, Math.floor(v / max * ramp.length));
+    const shade = inv.kw;
+    if (shade !== null && shade !== undefined) {
+      const idx = Math.min(ramp.length - 1, Math.floor(shade / max * ramp.length));
       cell.style.background = ramp[idx];
       cell.style.color = '#0b0b0b';
     }
+    const v = inv.today_kwh;
     const low = inv.pct_of_avg !== undefined && inv.pct_of_avg < 80;
     const working = (inv.state || '').toLowerCase() === 'working';
     // The big number is the day's energy; the status line always carries the
