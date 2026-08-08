@@ -458,6 +458,7 @@ button.ghost.nav:disabled:hover { background: transparent; color: var(--text-sec
 .wx-now { display: flex; align-items: baseline; gap: 7px; }
 .wx-icon { font-size: 19px; line-height: 1; }
 .wx-temp { font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
+.wx-unit { font-size: 11px; color: var(--text-secondary); margin-left: -3px; }
 .wx-desc { font-size: 12px; color: var(--text-secondary); }
 .wx-today, .wx-sun {
   font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-muted);
@@ -2809,11 +2810,12 @@ function buildMockData() {
       inverters: invList,
       weather: {
         fetched: new Date().toISOString().slice(0, 19),
-        current: { temp_c: 18.4, feels_c: 18.0, cloud_pct: 35, code: 1,
-          wind_kmh: 7.2, precip_mm: 0, is_day: true },
-        today: { code: 1, temp_max: 24.1, temp_min: 13.6,
+        units: { temp: '°F', wind: 'mph', precip: 'in', radiation: 'kWh/m²' },
+        current: { temp: 65.1, feels: 64.4, cloud_pct: 35, code: 1,
+          wind: 4.5, precip: 0, is_day: true },
+        today: { code: 1, temp_max: 75.4, temp_min: 56.5,
           sunrise: `${todayTotal.date}T05:58`, sunset: `${todayTotal.date}T20:31`,
-          radiation_mj: 23.4, precip_chance: 8, cloud_pct: 32 },
+          radiation_kwh_m2: 6.5, precip_chance: 8, cloud_pct: 32 },
       },
       meters: {
         timestamp: new Date(cur[0] * 1000).toISOString().slice(0, 19).replace('T', ' '),
@@ -2843,39 +2845,46 @@ const WMO = [
   [[80, 81, 82], '🌧', 'Showers'], [[85, 86], '🌨', 'Snow showers'],
   [[95, 96, 99], '⛈', 'Thunderstorm'],
 ];
-const wmo = code => WMO.find(([codes]) => codes.includes(code)) || ['·', '—'];
+const wmo = code => WMO.find(([codes]) => codes.includes(code)) || [[], '·', 'Unknown'];
 
 function renderWeather(live) {
   const box = $('weather');
   const w = live.weather;
   if (!w || !w.current) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
-  const [icon, label] = wmo(w.current.code).slice(w.current.code === undefined ? 9 : 1);
-  const t = w.today || {};
-  const [, dayLabel] = wmo(t.code);
+  const c = w.current, t = w.today || {};
+  // The payload names its own units rather than the page assuming them.
+  const u = w.units || { temp: '°F', wind: 'mph', precip: 'in', radiation: 'kWh/m²' };
+  const [, icon, label] = wmo(c.code);
+  const [, , dayLabel] = wmo(t.code);
   const clock = iso => iso ? iso.slice(11, 16) : '—';
-  const deg = v => v === null || v === undefined ? '—' : `${Math.round(v)}°`;
+  const deg = v => (v === null || v === undefined) ? '—' : `${Math.round(v)}°`;
 
   box.innerHTML =
     `<div class="wx-now"><span class="wx-icon">${icon}</span>`
-    + `<span class="wx-temp">${deg(w.current.temp_c)}</span></div>`
-    + `<div class="wx-desc">${esc(label)}${w.current.cloud_pct !== undefined
-        ? ` · ${Math.round(w.current.cloud_pct)}% cloud` : ''}</div>`
-    + `<div class="wx-today">${esc(dayLabel)} · ${deg(t.temp_max)}/${deg(t.temp_min)}`
+    + `<span class="wx-temp">${deg(c.temp)}</span>`
+    + `<span class="wx-unit">${esc(u.temp.replace('°', ''))}</span></div>`
+    + `<div class="wx-desc">${esc(label)}${c.cloud_pct !== undefined
+        ? ` · ${Math.round(c.cloud_pct)}% cloud` : ''}</div>`
+    + `<div class="wx-today">today ${esc(dayLabel.toLowerCase())} · `
+    + `${deg(t.temp_max)}/${deg(t.temp_min)}${esc(u.temp.replace('°', ''))}`
     + `${t.precip_chance ? ` · ${Math.round(t.precip_chance)}% rain` : ''}</div>`
     + `<div class="wx-sun">☀ ${clock(t.sunrise)} – ${clock(t.sunset)}</div>`;
 
-  box.dataset.tip = `<b>Weather</b>`
-    + `<div class="row">now<span class="num">${esc(label)}, ${deg(w.current.temp_c)}</span></div>`
-    + `<div class="row">feels like<span class="num">${deg(w.current.feels_c)}</span></div>`
-    + `<div class="row">cloud<span class="num">${Math.round(w.current.cloud_pct)}%</span></div>`
-    + `<div class="row">wind<span class="num">${fmt(w.current.wind_kmh, 0)} km/h</span></div>`
-    + `<b style="display:block;margin-top:5px">Today</b>`
-    + `<div class="row">${esc(dayLabel)}<span class="num">${deg(t.temp_max)} / ${deg(t.temp_min)}</span></div>`
-    + `<div class="row">rain chance<span class="num">${Math.round(t.precip_chance || 0)}%</span></div>`
-    + `<div class="row">solar energy<span class="num">${fmt(t.radiation_mj, 1)} MJ/m²</span></div>`
-    + `<div class="row">daylight<span class="num">${clock(t.sunrise)} – ${clock(t.sunset)}</span></div>`
-    + `<div style="color:var(--text-muted);margin-top:3px">read by the pi, not by this browser</div>`;
+  const row = (k, v) => `<div class="row">${k}<span class="num">${v}</span></div>`;
+  // deg() already prints the ° - the unit string adds only the letter
+  const unitLetter = esc(u.temp.replace('°', ''));
+  box.dataset.tip = '<b>Weather now</b>'
+    + row(esc(label), `${deg(c.temp)}${unitLetter}`)
+    + row('feels like', `${deg(c.feels)}${unitLetter}`)
+    + row('cloud', `${Math.round(c.cloud_pct)}%`)
+    + row('wind', `${fmt(c.wind, 1)} ${esc(u.wind)}`)
+    + '<b style="display:block;margin-top:5px">Today</b>'
+    + row(esc(dayLabel), `${deg(t.temp_max)} / ${deg(t.temp_min)}${unitLetter}`)
+    + row('rain chance', `${Math.round(t.precip_chance || 0)}%`)
+    + row('sunshine', `${fmt(t.radiation_kwh_m2, 1)} ${esc(u.radiation)}`)
+    + row('daylight', `${clock(t.sunrise)} – ${clock(t.sunset)}`)
+    + '<div style="color:var(--text-muted);margin-top:3px">read by the pi, not by this browser</div>';
   box.tabIndex = 0;
 }
 
