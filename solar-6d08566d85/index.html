@@ -1717,11 +1717,19 @@ function renderMonthly(history) {
     }
   }
 
-  // comparison years: production traced over the energy pane, net over its own
+  // comparison years: production and consumption traced over the energy pane,
+  // net over its own. End labels are collected rather than drawn inline, then
+  // nudged apart below - steady years finish at similar totals, so left where
+  // they land they print on top of one another.
+  const endLabels = [];
   others.forEach((y, i) => {
     const color = yearShade(PROD, i, others.length);
     const netColor = yearShade(css('--net'), i, others.length);
-    const trace = (key, Y, stroke) => {
+    // Only production and net carry the year label: consumption shares the
+    // upper pane with production, so labelling both would double the text at
+    // the right edge for no gain - the colour says which series it is, the
+    // fading says which year, and the hover gives every figure.
+    const trace = (key, Y, stroke, label) => {
       const pts = [];
       for (let mo = 0; mo < 12; mo++) {
         const m = (byYear[y] || {})[mo];
@@ -1732,13 +1740,33 @@ function renderMonthly(history) {
         d: pts.map((p, k) => `${k ? 'L' : 'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' '),
         fill: 'none', stroke, 'stroke-width': 1.5, 'stroke-dasharray': '4 3',
         'stroke-linejoin': 'round' }));
+      if (!label) return;
       const last = pts[pts.length - 1];
-      text(svg, last[0] + 4, last[1] + 3, String(y),
-        { 'font-size': 9.5, fill: css('--text-muted'), 'text-anchor': 'start' });
+      endLabels.push({ x: last[0], y: last[1], year: y });
     };
-    trace('pv_kwh', Ya, color);
-    trace('net_kwh', Yb, netColor);
+    trace('pv_kwh', Ya, color, true);
+    trace('consumption_kwh', Ya, yearShade(CONS, i, others.length), false);
+    trace('net_kwh', Yb, netColor, true);
   });
+
+  // separate them within each pane, so a label never sits on its neighbour
+  const GAP = 11;
+  for (const pane of [[A.top, A.bot], [B.top, B.bot]]) {
+    const here = endLabels.filter(e => e.y >= pane[0] - 30 && e.y <= pane[1] + 30)
+      .sort((a, b) => a.y - b.y);
+    here.forEach((e, k) => {
+      e.ly = k === 0 ? e.y : Math.max(e.y, here[k - 1].ly + GAP);
+    });
+  }
+  for (const e of endLabels) {
+    if (Math.abs((e.ly ?? e.y) - e.y) > 1.5) {
+      svg.appendChild(el('path', {
+        d: `M ${(e.x + 2).toFixed(1)} ${e.y.toFixed(1)} L ${(e.x + 5).toFixed(1)} ${(e.ly).toFixed(1)}`,
+        fill: 'none', stroke: css('--axis'), 'stroke-width': 1 }));
+    }
+    text(svg, e.x + 7, (e.ly ?? e.y) + 3, String(e.year),
+      { 'font-size': 9.5, fill: css('--text-muted'), 'text-anchor': 'start' });
+  }
 
   /* One hover target per month, spanning both panes: the tooltip carries the
      selected year's three figures and, when comparing, every other year's
