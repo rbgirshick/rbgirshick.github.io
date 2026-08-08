@@ -383,11 +383,8 @@ button.ghost.nav:disabled:hover { background: transparent; color: var(--text-sec
 
 /* --- array ------------------------------------------------------------- */
 .roof-scroll { overflow-x: auto; }
-.roof { min-width: 720px; position: relative; }
-.compass {
-  position: absolute; top: 22px; left: 8px;
-  user-select: none; line-height: 0;
-}
+.roof { min-width: 720px; }
+.compass { user-select: none; line-height: 0; }
 .compass svg { display: block; }
 @media (max-width: 900px) { .compass svg { width: 76px; height: 76px; } }
 .string-label {
@@ -434,6 +431,39 @@ button.ghost.nav:disabled:hover { background: transparent; color: var(--text-sec
 }
 .array-foot .ramp { display: flex; border-radius: 3px; overflow: hidden; }
 .array-foot .ramp i { width: 20px; height: 9px; display: block; }
+
+/* --- records ------------------------------------------------------------ */
+.records {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 14px 18px;
+}
+.record { border-top: 1px solid var(--grid); padding-top: 9px; }
+.rec-label {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 500;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-secondary);
+}
+.rec-value {
+  font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin-top: 3px;
+}
+.rec-value .rec-unit { font-size: 12px; font-weight: 400; color: var(--text-secondary); }
+.rec-when { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+.rec-note {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px;
+  color: var(--text-muted); opacity: 0.8; margin-top: 1px;
+}
+
+/* --- weather, beside the compass ---------------------------------------- */
+.roof-head { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 12px; }
+.weather { line-height: 1.35; user-select: none; padding-top: 4px; }
+.wx-now { display: flex; align-items: baseline; gap: 7px; }
+.wx-icon { font-size: 19px; line-height: 1; }
+.wx-temp { font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
+.wx-desc { font-size: 12px; color: var(--text-secondary); }
+.wx-today, .wx-sun {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-muted);
+  margin-top: 2px; white-space: nowrap;
+}
+@media (max-width: 680px) { .roof-head { gap: 14px; } }
 
 /* --- tables ------------------------------------------------------------ */
 .table-wrap { overflow-x: auto; max-height: 440px; overflow-y: auto; }
@@ -663,12 +693,24 @@ footer.colophon {
         <h2 class="eyebrow">The array</h2>
         <p class="sub" id="array-sub"></p>
       </div>
+      <div class="roof-head">
+        <div id="compass-slot"></div>
+        <div class="weather hidden" id="weather"></div>
+      </div>
       <div class="roof-scroll"><div class="roof" id="array"></div></div>
       <div class="array-foot">
         <span>producing now, less</span>
         <span class="ramp" id="array-ramp"></span>
         <span>more</span>
       </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2 class="eyebrow">Records</h2>
+        <p class="sub" id="records-sub"></p>
+      </div>
+      <div class="records" id="records"></div>
     </section>
 
     <section class="card">
@@ -2423,7 +2465,9 @@ function renderArray(live) {
     return cell;
   };
 
-  box.appendChild(buildCompass());
+  const slot = $('compass-slot');
+  clear(slot);
+  slot.appendChild(buildCompass());
 
   const placed = new Set();
   for (const strip of ROOF) {
@@ -2664,6 +2708,9 @@ function buildMockData() {
     const ev = rnd() < 0.30 ? 12 + rnd() * 16 : 0; // charging is an event, not a trend
     const cons = base * (0.85 + rnd() * 0.3) + ev;
 
+    // peaks, so the records card has something to rank
+    const peakPv = pv / 5.2 * (0.95 + rnd() * 0.12);
+    const peakCons = (ev ? 5 + rnd() * 13 : 1.2 + rnd() * 2.5);
     days.push({
       date: isoLocal(d),
       pv_kwh: +pv.toFixed(2),
@@ -2672,6 +2719,11 @@ function buildMockData() {
       inverters: 25,
       hours: 24,
       alerts: '',
+      peak_pv_kw: +peakPv.toFixed(3),
+      peak_consumption_kw: +peakCons.toFixed(3),
+      peak_import_kw: +Math.max(0, peakCons - peakPv * 0.2).toFixed(3),
+      peak_export_kw: +Math.max(0, peakPv - 0.5).toFixed(3),
+      night_pv_kwh: +(rnd() < 0.15 ? rnd() * 0.06 : 0).toFixed(3),
     });
   }
 
@@ -2755,6 +2807,14 @@ function buildMockData() {
         consumption_kwh: +days.reduce((a, d) => a + d.consumption_kwh, 0).toFixed(1),
       },
       inverters: invList,
+      weather: {
+        fetched: new Date().toISOString().slice(0, 19),
+        current: { temp_c: 18.4, feels_c: 18.0, cloud_pct: 35, code: 1,
+          wind_kmh: 7.2, precip_mm: 0, is_day: true },
+        today: { code: 1, temp_max: 24.1, temp_min: 13.6,
+          sunrise: `${todayTotal.date}T05:58`, sunset: `${todayTotal.date}T20:31`,
+          radiation_mj: 23.4, precip_chance: 8, cloud_pct: 32 },
+      },
       meters: {
         timestamp: new Date(cur[0] * 1000).toISOString().slice(0, 19).replace('T', ' '),
         production: { serial: 'MOCK000000p', kw: cur[1], lifetime_net_kwh: 44000 },
@@ -2769,6 +2829,136 @@ function buildMockData() {
     history: { generated: '', days, months, imputed: [] },
     inverters: { generated: '', dates: invDates, series },
   };
+}
+
+/* ---------- weather ------------------------------------------------------
+   Fetched on the Pi and carried inside the encrypted payload, so the page
+   still talks to nobody but its own feed. WMO codes, grouped: the exact code
+   matters less than what it looks like out of the window.                   */
+const WMO = [
+  [[0], '☀︎', 'Clear'], [[1], '🌤', 'Mostly clear'], [[2], '⛅', 'Partly cloudy'],
+  [[3], '☁︎', 'Overcast'], [[45, 48], '🌫', 'Fog'],
+  [[51, 53, 55, 56, 57], '🌦', 'Drizzle'],
+  [[61, 63, 65, 66, 67], '🌧', 'Rain'], [[71, 73, 75, 77], '🌨', 'Snow'],
+  [[80, 81, 82], '🌧', 'Showers'], [[85, 86], '🌨', 'Snow showers'],
+  [[95, 96, 99], '⛈', 'Thunderstorm'],
+];
+const wmo = code => WMO.find(([codes]) => codes.includes(code)) || ['·', '—'];
+
+function renderWeather(live) {
+  const box = $('weather');
+  const w = live.weather;
+  if (!w || !w.current) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const [icon, label] = wmo(w.current.code).slice(w.current.code === undefined ? 9 : 1);
+  const t = w.today || {};
+  const [, dayLabel] = wmo(t.code);
+  const clock = iso => iso ? iso.slice(11, 16) : '—';
+  const deg = v => v === null || v === undefined ? '—' : `${Math.round(v)}°`;
+
+  box.innerHTML =
+    `<div class="wx-now"><span class="wx-icon">${icon}</span>`
+    + `<span class="wx-temp">${deg(w.current.temp_c)}</span></div>`
+    + `<div class="wx-desc">${esc(label)}${w.current.cloud_pct !== undefined
+        ? ` · ${Math.round(w.current.cloud_pct)}% cloud` : ''}</div>`
+    + `<div class="wx-today">${esc(dayLabel)} · ${deg(t.temp_max)}/${deg(t.temp_min)}`
+    + `${t.precip_chance ? ` · ${Math.round(t.precip_chance)}% rain` : ''}</div>`
+    + `<div class="wx-sun">☀ ${clock(t.sunrise)} – ${clock(t.sunset)}</div>`;
+
+  box.dataset.tip = `<b>Weather</b>`
+    + `<div class="row">now<span class="num">${esc(label)}, ${deg(w.current.temp_c)}</span></div>`
+    + `<div class="row">feels like<span class="num">${deg(w.current.feels_c)}</span></div>`
+    + `<div class="row">cloud<span class="num">${Math.round(w.current.cloud_pct)}%</span></div>`
+    + `<div class="row">wind<span class="num">${fmt(w.current.wind_kmh, 0)} km/h</span></div>`
+    + `<b style="display:block;margin-top:5px">Today</b>`
+    + `<div class="row">${esc(dayLabel)}<span class="num">${deg(t.temp_max)} / ${deg(t.temp_min)}</span></div>`
+    + `<div class="row">rain chance<span class="num">${Math.round(t.precip_chance || 0)}%</span></div>`
+    + `<div class="row">solar energy<span class="num">${fmt(t.radiation_mj, 1)} MJ/m²</span></div>`
+    + `<div class="row">daylight<span class="num">${clock(t.sunrise)} – ${clock(t.sunset)}</span></div>`
+    + `<div style="color:var(--text-muted);margin-top:3px">read by the pi, not by this browser</div>`;
+  box.tabIndex = 0;
+}
+
+/* ---------- records ------------------------------------------------------
+   Bests and worsts over the whole archive.
+
+   What counts is the careful part. A day only qualifies if it was actually
+   measured end to end: 23-25 hours covered, no meter-reset exclusion, and not
+   one of the estimated outage days. Without that filter the "records" would
+   mostly be artefacts - the 16-day catch-up row would take every high, and
+   every partial day would take every low. Lowest-production also drops exact
+   zeros, since a zero day is a day the array was not reporting, not a day the
+   sun failed to rise.                                                        */
+function soundRecordDays(history) {
+  return dailySeries(history).filter(d =>
+    !d.imputed
+    && d.hours !== null && d.hours !== undefined && d.hours >= 23 && d.hours <= 25
+    && !String(d.alerts || '').startsWith('⚠️ EXCLUDED'));
+}
+
+function renderRecords(history, live) {
+  const box = $('records');
+  clear(box);
+  const days = soundRecordDays(history);
+  if (!days.length) { $('records-sub').textContent = 'no complete days on record yet'; return; }
+
+  const span = `${days[0].date} to ${days[days.length - 1].date}`;
+  $('records-sub').textContent = `${days.length} fully measured days · ${span}`;
+
+  const best = (label, key, cmp, unit, dec, note) => {
+    const pool = days.filter(d => d[key] !== null && d[key] !== undefined);
+    if (!pool.length) return null;
+    const win = pool.reduce((a, b) => (cmp(b[key], a[key]) ? b : a));
+    return { label, value: win[key], date: win.date, unit, dec, note };
+  };
+  const most = (a, b) => a > b;
+  const least = (a, b) => a < b;
+
+  const items = [
+    best('Best production day', 'pv_kwh', most, 'kWh', 1),
+    best('Leanest production day', 'pv_kwh', least, 'kWh', 1, 'zeros excluded'),
+    best('Heaviest consumption day', 'consumption_kwh', most, 'kWh', 1),
+    best('Lightest consumption day', 'consumption_kwh', least, 'kWh', 1),
+    best('Most exported in a day', 'net_kwh', least, 'kWh', 1),
+    best('Most imported in a day', 'net_kwh', most, 'kWh', 1),
+    best('Peak production', 'peak_pv_kw', most, 'kW', 2),
+    best('Peak household draw', 'peak_consumption_kw', most, 'kW', 2),
+    best('Peak export', 'peak_export_kw', most, 'kW', 2),
+    best('Peak import', 'peak_import_kw', most, 'kW', 2),
+    best('Most produced after dark', 'night_pv_kwh', most, 'kWh', 2, '22:00–04:00'),
+  ].filter(Boolean);
+
+  // lowest production must ignore days the array simply did not report
+  const lit = days.filter(d => d.pv_kwh > 0.05);
+  const lean = items.find(i => i.label === 'Leanest production day');
+  if (lean && lit.length) {
+    const win = lit.reduce((a, b) => (b.pv_kwh < a.pv_kwh ? b : a));
+    lean.value = win.pv_kwh; lean.date = win.date;
+  }
+
+  const months = (history.months || []).filter(m => m.days >= 27);
+  if (months.length) {
+    const bm = months.reduce((a, b) => (b.pv_kwh > a.pv_kwh ? b : a));
+    items.push({ label: 'Best month', value: bm.pv_kwh, date: bm.month, unit: 'kWh', dec: 0,
+      note: 'whole months only' });
+  }
+
+  const fmtDate = s => s.length === 7
+    ? `${MONTHS[+s.slice(5) - 1]} ${s.slice(0, 4)}`
+    : new Date(`${s}T12:00:00`).toLocaleDateString(undefined,
+        { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+  for (const it of items) {
+    const cell = document.createElement('div');
+    cell.className = 'record';
+    cell.innerHTML =
+      `<div class="rec-label">${esc(it.label)}</div>`
+      + `<div class="rec-value">${fmt(Math.abs(it.value), it.dec)}`
+      + `<span class="rec-unit"> ${it.unit}</span></div>`
+      + `<div class="rec-when">${esc(fmtDate(it.date))}</div>`
+      + (it.note ? `<div class="rec-note">${esc(it.note)}</div>` : '');
+    box.appendChild(cell);
+  }
 }
 
 /* ---------- orchestration ---------------------------------------------- */
@@ -2824,8 +3014,10 @@ function renderAll() {
   renderCumulative(DATA.history || { days: [] });
   renderRange(DATA.history || { days: [] }, live);
   renderArray(live);
+  renderWeather(live);
   renderSystemNotes(live);
   renderMeters(live);
+  renderRecords(DATA.history || { days: [] }, live);
   renderHistory(DATA.history || { days: [] });
   firstRender = false;
 }
