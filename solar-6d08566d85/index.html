@@ -1203,7 +1203,13 @@ function renderHero(intraday, live) {
     /* 2. where the day is now heading: measured so far, plus the sunshine still
        to come. The band opens from the current point rather than from the
        morning, because everything left of it is no longer in doubt. */
-    if (plan.elapsed > 0.02 && plan.elapsed < 0.995) {
+    /* Shown from shortly after sunrise. The threshold is on sunshine accrued,
+       not clock time, and it has to be small: under a marine layer this site
+       is still under 2% at half past eight, so anything higher hides the
+       projection through the entire morning - precisely when someone looking
+       out at the weather wants it. Early on it simply tracks the forecast,
+       which is the honest reading: nothing measured yet to disagree with. */
+    if (plan.elapsed > 0.002 && plan.elapsed < 0.995) {
       const rest = plan.curve.filter(([sec]) => sec >= plan.nowSecs);
       const at = f => plan.actual + fc.kwh * (f - plan.elapsed);
       const band = fc.mae_kwh || 0;
@@ -1213,7 +1219,7 @@ function renderHero(intraday, live) {
         svg.appendChild(el('path', {
           d: [...up, ...dn].map((q, i) => `${i ? 'L' : 'M'} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`)
             .join(' ') + ' Z',
-          fill: css('--prod'), 'fill-opacity': 0.09, stroke: 'none' }));
+          fill: css('--prod'), 'fill-opacity': 0.16, stroke: 'none' }));
       }
       const pPts = rest.map(([sec, f]) => [px(sec), Yb(at(f))]);
       svg.appendChild(el('path', {
