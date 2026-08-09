@@ -787,6 +787,21 @@ footer.colophon {
 
     <section class="card">
       <div class="card-head">
+        <h2 class="eyebrow">Long run</h2>
+        <p class="sub" id="health-sub"></p>
+      </div>
+      <div class="chart-box">
+        <svg class="chart" id="health-chart" viewBox="0 0 1000 220" role="img"
+             aria-label="Monthly output against a frozen baseline model"></svg>
+        <div class="tooltip" id="health-tip"></div>
+      </div>
+      <p class="range-note" id="health-note"></p>
+      <div class="table-wrap" id="bills-table" style="margin-top:16px"></div>
+      <p class="range-note" id="bills-note"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
         <h2 class="eyebrow">Meters</h2>
         <p class="sub">Resolved by serial number, never device index.</p>
       </div>
@@ -3437,7 +3452,31 @@ function buildMockData() {
     },
     intraday: { generated: '', days: 14, tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       columns: ['t', 'pv_kw', 'consumption_kw', 'net_kw'], rows },
-    history: { generated: '', days, months, imputed: [] },
+    history: { generated: '', days, months, imputed: [],
+      // a synthetic long-run record: an array holding steady, then a soiling
+      // episode, then a wash - so the card's shape is exercised, not just its
+      // happy case
+      health: {
+        baseline: { from: '2023-01-01', to: '2023-04-30',
+                    kwh_per_insolation: 7.18, days: 120 },
+        performance: ['2023-05', '2023-06', '2023-07', '2023-08', '2023-09', '2023-10',
+                      '2023-11', '2023-12', '2024-01', '2024-02', '2024-03', '2024-04']
+          .map((month, i) => {
+            const idx = [1.01, 0.99, 1.02, 1.00, 0.98, 0.97,
+                         0.93, 0.88, 0.86, 0.91, 1.00, 1.02][i];
+            const expected = 500 + i * 40;
+            return { month, index: idx, days: 28 + (i % 3),
+                     actual_kwh: Math.round(expected * idx), expected_kwh: expected };
+          }),
+        bills: [
+          { start: '2023-06-01', end: '2023-08-01', billed_net_kwh: -1240.0,
+            computed_net_kwh: -1262.0, imported_kwh: 640, exported_kwh: 1880,
+            diff_kwh: -22.0, diff_pct_of_flow: -0.87, days: 61, estimated: 0, missing: 0 },
+          { start: '2023-08-01', end: '2023-10-01', billed_net_kwh: -880.0,
+            computed_net_kwh: -902.0, imported_kwh: 720, exported_kwh: 1600,
+            diff_kwh: -22.0, diff_pct_of_flow: -0.95, days: 61, estimated: 0, missing: 0 },
+        ],
+      } },
     inverters: { generated: '', dates: invDates, series },
   };
 }
@@ -3540,6 +3579,143 @@ function soundRecordDays(history) {
     !d.imputed
     && d.hours !== null && d.hours !== undefined && d.hours >= 23 && d.hours <= 25
     && !String(d.alerts || '').startsWith('⚠️ EXCLUDED'));
+}
+
+/* ---------- long run ------------------------------------------------------
+   Two questions the daily figures move too fast to answer.
+
+   How is the array doing compared with how it used to? Not from the fitted
+   coefficient - that is refit daily, so it absorbs the very decline it would
+   have to reveal, and read as a series it is dominated by season rather than by
+   the panels. Instead a baseline model is frozen from the first 120 sound days
+   and each month scored against it: actual production over what that baseline
+   says the month's real sunshine and temperature should have produced. Weather
+   divides out. The index sits at 1.00 with a standard deviation of 0.06, which
+   is too coarse to see slow ageing and quite sharp enough to see a string drop
+   out, snow lie, or a wash take effect.
+
+   And does the utility meter agree with us? Every consumption and net-grid
+   figure passes through the CT correction; the meter is the one instrument in
+   the story not derived from the PVS6, so it is the only independent check
+   there is. */
+function renderHealth(history) {
+  const h = history.health || {};
+  const series = h.performance || [];
+  const svg = $('health-chart');
+  clear(svg);
+
+  if (!series.length) {
+    $('health-sub').textContent = 'not enough complete months yet';
+    $('health-note').textContent = '';
+  } else {
+    const b = h.baseline || {};
+    $('health-sub').textContent =
+      `each month against the array as it was in ${b.from ? b.from.slice(0, 7) : 'the baseline'}`
+      + `–${b.to ? b.to.slice(0, 7) : ''} · 1.00 means unchanged`;
+
+    const W = chartW(svg), narrow = W < 560;
+    const H = narrow ? 210 : 220;
+    const padL = narrow ? 38 : 48, padR = 16, top = 18, bot = H - 34;
+    sizeChart(svg, W, H);
+
+    const vals = series.map(p => p.index);
+    const lo = Math.min(0.85, Math.floor(Math.min(...vals) * 20 - 1) / 20);
+    const hi = Math.max(1.15, Math.ceil(Math.max(...vals) * 20 + 1) / 20);
+    const Y = v => top + (1 - (v - lo) / (hi - lo)) * (bot - top);
+    const X = i => padL + (series.length === 1 ? (W - padL - padR) / 2
+      : i / (series.length - 1) * (W - padL - padR));
+
+    // the band is one standard deviation of this site's own monthly scatter -
+    // inside it, a month is indistinguishable from normal
+    const SD = 0.06;
+    svg.appendChild(el('rect', { x: padL, y: Y(1 + SD), width: W - padL - padR,
+      height: Math.max(1, Y(1 - SD) - Y(1 + SD)),
+      fill: css('--prod'), 'fill-opacity': 0.08 }));
+
+    for (let v = Math.ceil(lo * 20) / 20; v <= hi + 1e-9; v += 0.05) {
+      const one = Math.abs(v - 1) < 1e-9;
+      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
+        stroke: one ? css('--axis') : css('--grid'), 'stroke-width': one ? 1.4 : 1 }));
+      text(svg, padL - 8, Y(v) + 3.5, v.toFixed(2), { 'text-anchor': 'end' });
+    }
+
+    const pts = series.map((p, i) => [X(i), Y(p.index)]);
+    svg.appendChild(el('path', {
+      d: pts.map((q, i) => `${i ? 'L' : 'M'} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join(' '),
+      fill: 'none', stroke: css('--prod'), 'stroke-width': 2,
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+
+    const tip = $('health-tip');
+    series.forEach((p, i) => {
+      const [x, y] = pts[i];
+      const dot = el('circle', { cx: x, cy: y, r: 4.5, fill: css('--surface-1'),
+        stroke: css('--prod'), 'stroke-width': 2 });
+      svg.appendChild(dot);
+      if (!narrow || i % 2 === 0) {
+        text(svg, x, bot + 18, MONTHS[+p.month.slice(5) - 1], { 'text-anchor': 'middle' });
+        text(svg, x, bot + 30, p.month.slice(2, 4), { 'text-anchor': 'middle',
+          fill: css('--text-muted') });
+      }
+      const hit = el('circle', { cx: x, cy: y, r: 14, fill: 'transparent' });
+      hit.addEventListener('mouseenter', () => {
+        const box = svg.getBoundingClientRect();
+        tip.innerHTML = `<b>${MONTHS[+p.month.slice(5) - 1]} ${p.month.slice(0, 4)}</b>`
+          + `<div class="row">index<span class="num">${fmt(p.index, 3)}</span></div>`
+          + `<div class="row">produced<span class="num">${fmt(p.actual_kwh, 0)} kWh</span></div>`
+          + `<div class="row">baseline would give<span class="num">${fmt(p.expected_kwh, 0)} kWh</span></div>`
+          + `<div class="row">days counted<span class="num">${p.days}</span></div>`
+          + '<div style="color:var(--text-muted);margin-top:3px">weather and temperature are '
+          + 'already divided out, so this is the array, not the month</div>';
+        tip.style.opacity = 1;
+        tip.style.left = `${x / W * box.width}px`;
+        tip.style.top = `${y / H * box.height}px`;
+      });
+      hit.addEventListener('mouseleave', () => tip.style.opacity = 0);
+      svg.appendChild(hit);
+    });
+
+    const last = series[series.length - 1];
+    $('health-note').textContent =
+      `Latest complete month ${fmt(last.index, 2)}. The shaded band is one standard deviation `
+      + `of this site's own month-to-month scatter: inside it nothing is distinguishable from `
+      + `normal. Too coarse to show slow ageing, sharp enough to show a string dropping out, `
+      + `snow lying, or a wash taking effect.`;
+  }
+
+  // --- the utility meter -------------------------------------------------
+  const bills = (h.bills || []).filter(b => b.days > 0);
+  if (!bills.length) {
+    $('bills-note').textContent = '';
+    clear($('bills-table'));
+    return;
+  }
+  buildTable($('bills-table'),
+    ['Billing period', 'Utility (kWh)', 'This system (kWh)', 'Difference', 'Coverage'],
+    bills.slice().reverse().map(b => {
+      const complete = !b.missing;
+      const cover = `${b.days}d` + (b.estimated ? ` · ${b.estimated} est` : '')
+        + (b.missing ? ` · ${b.missing} missing` : '');
+      return [
+        `${b.start} → ${b.end}`,
+        { v: fmt(b.billed_net_kwh, 0), cls: b.billed_net_kwh < 0 ? 'exp' : '' },
+        { v: fmt(b.computed_net_kwh, 0), cls: b.computed_net_kwh < 0 ? 'exp' : '' },
+        { v: `${b.diff_kwh > 0 ? '+' : ''}${fmt(b.diff_kwh, 0)}`
+             + (b.diff_pct_of_flow === null ? '' : ` (${fmt(b.diff_pct_of_flow, 1)}%)`),
+          cls: complete ? '' : 'est' },
+        { v: cover, cls: complete ? '' : 'alert' },
+      ];
+    }));
+  const complete = bills.filter(b => !b.missing && !b.estimated);
+  const worst = complete.length
+    ? Math.max(...complete.map(b => Math.abs(b.diff_pct_of_flow || 0))) : null;
+  $('bills-note').textContent = worst === null
+    ? 'No billing period is yet covered by complete measured data.'
+    : `Net grid here is computed, not measured: these CTs sit on the wrong side of the solar `
+      + `tie-in, so every consumption figure is reconstructed in software. The meter is the only `
+      + `independent check that exists, and across fully measured periods the two agree to within `
+      + `${fmt(worst, 1)}% of the energy crossing it — the residual is the difference between `
+      + `monitoring-grade CTs and a revenue meter, not the arithmetic. Percentages are of total `
+      + `flow, since net crosses zero twice a year.`;
 }
 
 function renderRecords(history, live) {
@@ -3663,6 +3839,7 @@ function renderAll() {
   renderSystemNotes(live);
   renderMeters(live);
   renderRecords(DATA.history || { days: [] }, live);
+  renderHealth(DATA.history || {});
   renderHistory(DATA.history || { days: [] });
   firstRender = false;
 }
