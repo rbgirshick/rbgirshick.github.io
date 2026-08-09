@@ -812,8 +812,11 @@ footer.colophon {
         are kWh, so the percentage has no units of its own — it is a comparison, not a quantity:
         <span class="formula">this month &nbsp;=&nbsp; <b>612 kWh</b> actually produced<br>
           baseline &nbsp;&nbsp;&nbsp;=&nbsp; <b>606 kWh</b> the array would have made in the same
-          sun and heat<br>
-          <i>plotted</i> &nbsp;&nbsp;&nbsp;=&nbsp; 612 ÷ 606 &nbsp;=&nbsp; <b>101%</b></span>
+          sun and heat<br><br>
+          <i>plotted</i> &nbsp;&nbsp;&nbsp;=&nbsp; 612 kWh <b>divided by</b> 606 kWh
+          &nbsp;=&nbsp; <b>1.01</b> &nbsp;=&nbsp; <b>101%</b><br>
+          <i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+          the kWh cancel, which is why the axis is a percentage</i></span>
         Because the same weather appears on both sides, a dull month does not count against the
         panels — only the array itself can move this number. <b>100% means nothing has
         changed</b>; below means the array is producing less than it used to for the same sun.
@@ -3716,8 +3719,8 @@ function renderHealth(history) {
           + `<div class="row">output<span class="num">${fmt(p.index * 100, 1)}% of baseline</span></div>`
           + `<div class="row">produced<span class="num">${fmt(p.actual_kwh, 0)} kWh</span></div>`
           + `<div class="row">baseline would give<span class="num">${fmt(p.expected_kwh, 0)} kWh</span></div>`
-          + `<div class="row">so<span class="num">${fmt(p.actual_kwh, 0)} ÷ ${fmt(p.expected_kwh, 0)}`
-          + ` = ${fmt(p.index, 3)}</span></div>`
+          + `<div class="row">so<span class="num">${fmt(p.actual_kwh, 0)} / ${fmt(p.expected_kwh, 0)}`
+          + ` = ${fmt(p.index * 100, 1)}%</span></div>`
           + `<div class="row">days counted<span class="num">${p.days}</span></div>`
           + '<div style="color:var(--text-muted);margin-top:3px">weather and temperature are '
           + 'already divided out, so this is the array, not the month</div>';
