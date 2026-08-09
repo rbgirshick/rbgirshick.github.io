@@ -306,6 +306,8 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
 .chip-rows .year-chips { margin-bottom: 0; margin-left: auto; }
 @media (max-width: 680px) { .chip-rows .year-chips { margin-left: 0; } }
 
+.chart-head { display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap; margin: 14px 0 2px; }
 .range-note {
   font-size: 11.5px; color: var(--text-muted); margin: 14px 0 0; line-height: 1.65;
 }
@@ -702,37 +704,26 @@ footer.colophon {
         </div>
       </div>
       <div class="readouts" id="range-totals"></div>
-      <p class="range-note" id="range-note"></p>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h2 class="eyebrow" id="strip-eyebrow">14 days</h2>
-        <p class="sub" id="strip-sub"></p>
-        <span class="push"></span>
+      <div class="chart-head">
         <div class="legend" id="strip-legend"></div>
+        <span class="push"></span>
         <div class="chart-nav">
-          <span class="dp" data-dp><input class="dp-field" id="strip-goto" type="text"
-                 inputmode="numeric" autocomplete="off" spellcheck="false"
-                 placeholder="yyyy-mm-dd" aria-label="Go to day"
-                 data-tip="Jump to a day — it becomes the right-hand edge of the window"><button
-                 class="dp-open" type="button" aria-label="Open calendar">▦</button></span>
-          <button class="ghost" id="strip-today" type="button"
-                  data-tip="Back to the most recent 14 days">Today</button>
           <button class="ghost nav" id="strip-prev" type="button"
-                  aria-label="Show the previous day" data-tip="Slide the window one day earlier">‹</button>
+                  aria-label="Earlier" data-tip="Shift the range one window earlier">‹</button>
           <button class="ghost nav" id="strip-next" type="button"
-                  aria-label="Show the next day" data-tip="Slide the window one day later">›</button>
+                  aria-label="Later" data-tip="Shift the range one window later">›</button>
           <button class="toggle-table" data-toggle="strip-table">Table</button>
         </div>
       </div>
-      <div class="chart-wrap">
+      <div class="chart-box">
         <svg class="chart" id="strip-chart" viewBox="0 0 1000 340" role="img"
-             aria-label="Daily production, consumption and net grid over a 14-day window"></svg>
+             aria-label="Production, consumption and net grid for each day in the range"></svg>
         <div class="tooltip" id="strip-tip"></div>
       </div>
       <div class="table-wrap hidden" id="strip-table" style="margin-top:12px"></div>
+      <p class="range-note" id="range-note"></p>
     </section>
+
 
     <section class="card">
       <div class="card-head">
@@ -1565,74 +1556,116 @@ function renderReadouts(live, peak, loadPeak, netPeak) {
    bars per day there is only ~18px of width per bar, far too little for a
    horizontal "-32.1", and the point of this card is that no hovering is
    needed.                                                                   */
-let STRIP_OFFSET = 0;      // days back from the newest day with data
-let STRIP_TARGET = null;   // a date to jump to, resolved on the next render
 let stripWired = false;
 
-function wireStripNav() {
-  if (stripWired) return;
-  stripWired = true;
-  const rerender = () => renderStrip(DATA.history || {}, DATA.live || {});
-  $('strip-prev').addEventListener('click', () => { STRIP_OFFSET += 1; rerender(); });
-  $('strip-next').addEventListener('click', () => { STRIP_OFFSET -= 1; rerender(); });
-  $('strip-today').addEventListener('click', () => { STRIP_OFFSET = 0; STRIP_TARGET = null; rerender(); });
-  $('strip-goto').addEventListener('change', () => {
-    if ($('strip-goto').value) { STRIP_TARGET = $('strip-goto').value; rerender(); }
-  });
+/* The chevrons shift the whole selection by its own length, which is what a
+   reader means by "the previous fortnight" when a fortnight is on screen. The
+   date fields and presets above are the same selection, so they move too. */
+function wireRangeShift() {
+  if (wireRangeShift.done) return;
+  wireRangeShift.done = true;
+  const shift = dir => {
+    const days = dailySeries(DATA.history || {});
+    if (!days.length) return;
+    const [from, to] = rangeWindow(days);
+    const num = str => Math.round(Date.parse(str + 'T00:00:00') / 86400000);
+    const iso = n => isoLocal(new Date(n * 86400000 + 43200000));
+    const span = num(to) - num(from) + 1;
+    const lo = num(days[0].date);
+    const hi = num((DATA.live && DATA.live.today && DATA.live.today.date) || days[days.length - 1].date);
+    let a = num(from) + dir * span, b = num(to) + dir * span;
+    if (b > hi) { b = hi; a = Math.max(lo, b - span + 1); }
+    if (a < lo) { a = lo; b = Math.min(hi, a + span - 1); }
+    RANGE = { preset: null, from: iso(a), to: iso(b) };
+    renderRange(DATA.history || {}, DATA.live || {});
+  };
+  $('strip-prev').addEventListener('click', () => shift(-1));
+  $('strip-next').addEventListener('click', () => shift(1));
 }
 
-function renderStrip(history, live) {
-  wireStripNav();
+/* The bars for whatever range the card above has selected.
+
+   Previously its own card with its own fortnight window, its own date picker
+   and its own "today" button - which asked the reader to hold two overlapping
+   selections in mind, one for the totals and one for the bars, and to notice
+   that they disagreed. One selection now drives both: the totals are the sum of
+   the bars, which is what anyone would assume anyway.
+
+   A range can be any length, and three bars a day survives about six weeks
+   before it turns to hair, so longer spans bucket into weeks and then months.
+   The bucket is stated in the subtitle rather than left to be inferred from
+   bar count. */
+function renderRangeBars(inRange, from, to) {
+  wireRangeShift();
   const svg = $('strip-chart');
   clear(svg);
+  if (!inRange.length) return;
 
-  const all = dailySeries(history);
-  if (live.today && !all.some(d => d.date === live.today.date)) {
-    all.push({ ...live.today, partial: true });
-  }
-  all.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  if (!all.length) { $('strip-sub').textContent = 'no data yet'; return; }
-
-  const byDate = new Map(all.map(d => [d.date, d]));
-  // Three bars a day cannot survive 14 days on a phone - at 390px that is 7px
-  // per bar with a rotated label on it. Show a week instead; the window still
-  // slides a day at a time, so the fortnight is two swipes away.
+  const byDate = new Map(inRange.map(d => [d.date, d]));
+  const dayNum = str => Math.round(Date.parse(str + 'T00:00:00') / 86400000);
+  const spanDays = dayNum(to) - dayNum(from) + 1;
   const chartWidthNow = chartW(svg);
-  const SPAN = chartWidthNow < 560 ? 7 : 14;
-  $('strip-eyebrow').textContent = `${SPAN} days`;
-  const dayMs = 86400000;
-  const parse = s => new Date(s + 'T12:00:00');
-  const newest = parse(all[all.length - 1].date);
-  const oldest = parse(all[0].date);
-  const maxOffset = Math.max(0, Math.round((newest - oldest) / dayMs) - (SPAN - 1));
+  const perBucket = spanDays <= (chartWidthNow < 560 ? 16 : 45) ? 1
+    : spanDays <= 400 ? 7 : 0;                     // 0 means calendar months
 
-  // A requested day becomes the right-hand edge of the window, so you see it
-  // together with the fortnight leading up to it.
-  if (STRIP_TARGET) {
-    STRIP_OFFSET = Math.round((newest - parse(STRIP_TARGET)) / dayMs);
-    STRIP_TARGET = null;
+  const parse = str => new Date(str + 'T12:00:00');
+  const SERIES_KEYS = ['pv_kwh', 'consumption_kwh', 'net_kwh'];
+  const blank = () => ({ pv_kwh: 0, consumption_kwh: 0, net_kwh: 0,
+                         hours: 0, imputed: false, days: 0 });
+  const buckets = [];
+  const push = (start, top, bottom) =>
+    buckets.push({ d: start, key: isoLocal(start), top, bottom, row: null });
+
+  if (perBucket === 1) {
+    for (let n = dayNum(from); n <= dayNum(to); n++) {
+      const d = new Date(n * 86400000 + 43200000);
+      const key = isoLocal(d);
+      buckets.push({ d, key, row: byDate.get(key) || null,
+        top: d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2),
+        bottom: String(d.getDate()) });
+    }
+  } else if (perBucket === 7) {
+    for (let n = dayNum(from); n <= dayNum(to); n += 7) {
+      const d = new Date(n * 86400000 + 43200000);
+      const agg = blank();
+      for (let k = n; k < n + 7 && k <= dayNum(to); k++) {
+        const r = byDate.get(isoLocal(new Date(k * 86400000 + 43200000)));
+        if (!r) continue;
+        for (const key of SERIES_KEYS) agg[key] += r[key] || 0;
+        agg.hours += r.hours || 0;
+        agg.imputed = agg.imputed || !!r.imputed;
+        agg.days += 1;
+      }
+      push(d, 'wk', d.toLocaleDateString(undefined, { day: 'numeric' }));
+      buckets[buckets.length - 1].row = agg.days ? agg : null;
+    }
+  } else {
+    const months = new Map();
+    for (const r of inRange) {
+      const m = r.date.slice(0, 7);
+      if (!months.has(m)) months.set(m, blank());
+      const agg = months.get(m);
+      for (const key of SERIES_KEYS) agg[key] += r[key] || 0;
+      agg.hours += r.hours || 0;
+      agg.imputed = agg.imputed || !!r.imputed;
+      agg.days += 1;
+    }
+    for (const m of [...months.keys()].sort()) {
+      const d = new Date(m + '-15T12:00:00');
+      push(d, MONTHS[+m.slice(5) - 1], m.slice(2, 4));
+      buckets[buckets.length - 1].row = months.get(m);
+    }
   }
-  STRIP_OFFSET = Math.min(Math.max(0, STRIP_OFFSET), maxOffset);
-
-  const end = new Date(newest.getTime() - STRIP_OFFSET * dayMs);
-  const window14 = [];
-  for (let i = SPAN - 1; i >= 0; i--) {
-    const d = new Date(end.getTime() - i * dayMs);
-    const key = isoLocal(d);
-    window14.push({ d, key, row: byDate.get(key) });
+  const window14 = buckets;
+  const SPAN = buckets.length || 1;
+  // say what a bar is, rather than leaving it to be counted
+  const bucketWord = perBucket === 1 ? 'one bar per day'
+    : perBucket === 7 ? 'one bar per week' : 'one bar per month';
+  const sub = $('range-sub');
+  if (sub && !sub.textContent.includes('one bar per')) {
+    sub.textContent = `${sub.textContent} · ${bucketWord}`;
   }
-
-  $('strip-prev').disabled = STRIP_OFFSET >= maxOffset;
-  $('strip-next').disabled = STRIP_OFFSET <= 0;
-  $('strip-today').disabled = STRIP_OFFSET <= 0;
-  const goto_ = $('strip-goto');
-  goto_.min = all[0].date;
-  goto_.max = all[all.length - 1].date;
-  if (document.activeElement !== goto_) goto_.value = isoLocal(end);
-  const fmtDay = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  $('strip-sub').textContent = `${fmtDay(window14[0].d)} – ${fmtDay(end)}`
-    + (STRIP_OFFSET ? ` · ${STRIP_OFFSET} day${STRIP_OFFSET === 1 ? '' : 's'} back` : '');
-
+  const newest = parse(inRange[inRange.length - 1].date);
   const PROD = css('--prod'), CONS = css('--cons'), NET = css('--net');
   const SERIES = [
     { key: 'pv_kwh', name: 'Production', color: PROD },
@@ -1648,7 +1681,10 @@ function renderStrip(history, live) {
   sizeChart(svg, W, H);
   const band = (W - padL - padR) / SPAN;
   const gap = 2;                                   // surface gap between bars
-  const barW = Math.max(5, (band - (narrow ? 10 : 16) - gap * 2) / 3);
+  // capped, or a one-day range draws three slabs the width of the card;
+  // the group is centred in its band so short ranges look deliberate
+  const barW = Math.min(narrow ? 34 : 46,
+                        Math.max(5, (band - (narrow ? 10 : 16) - gap * 2) / 3));
 
   let lo = 0, hi = 0.5;
   for (const w of window14) {
@@ -1683,7 +1719,8 @@ function renderStrip(history, live) {
       return;
     }
     const est = !!w.row.imputed;
-    const partial = !est && !(w.row.hours >= 23 && w.row.hours <= 25);
+    const partial = !est && (w.row.days || 1) === 1
+      && !(w.row.hours >= 23 && w.row.hours <= 25);
     SERIES.forEach((s, j) => {
       const v = w.row[s.key];
       if (v === null || v === undefined) return;
@@ -1720,10 +1757,12 @@ function renderStrip(history, live) {
   window14.forEach((w, i) => {
     const cx = padL + band * i + band / 2;
     const isNewest = w.key === isoLocal(newest);
-    text(svg, cx, bot + 19, w.d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2), {
+    // every other label once the bars get thin, or they collide
+    if (SPAN > 24 && i % 2) return;
+    text(svg, cx, bot + 19, w.top, {
       'text-anchor': 'middle', 'font-size': 11,
       fill: w.row ? css('--text-secondary') : css('--text-muted') });
-    text(svg, cx, bot + 33, String(w.d.getDate()), {
+    text(svg, cx, bot + 33, w.bottom, {
       'text-anchor': 'middle', 'font-size': 12,
       fill: w.row ? css('--text-primary') : css('--text-muted'),
       'font-weight': isNewest ? 600 : 400 });
@@ -1738,8 +1777,12 @@ function renderStrip(history, live) {
       const r = w.row;
       const line = s => `<div class="row"><span class="sw" style="background:${s.color}"></span>${s.name}`
         + `<span class="num">${r[s.key] === null || r[s.key] === undefined ? '—' : fmt(r[s.key], 1)} kWh</span></div>`;
-      tip.innerHTML = `<b>${esc(w.d.toLocaleDateString(undefined,
-          { weekday: 'long', month: 'short', day: 'numeric' }))}</b>`
+      const heading = w.row && w.row.days > 1
+        ? `${esc(w.d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}`
+          + ` · ${w.row.days} days`
+        : esc(w.d.toLocaleDateString(undefined,
+            { weekday: 'long', month: 'short', day: 'numeric' }));
+      tip.innerHTML = `<b>${heading}</b>`
         + (r
           ? SERIES.map(line).join('')
             + (r.imputed
@@ -1759,11 +1802,12 @@ function renderStrip(history, live) {
   });
 
   buildTable($('strip-table'),
-    ['Date', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Note'],
+    ['Starting', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Note'],
     window14.slice().reverse().map(w => {
       const r = w.row;
       if (!r) return [w.key, '—', '—', '—', { v: 'no data', cls: 'alert' }];
       const note = r.imputed ? 'estimated'
+        : r.days > 1 ? `${r.days} days`
         : !(r.hours >= 23 && r.hours <= 25) ? 'partial day' : '';
       const cls = r.imputed ? 'est' : '';
       return [
@@ -2705,6 +2749,11 @@ function renderRange(history, live) {
     notes.push(`${excluded.length} day${excluded.length === 1 ? '' : 's'} zeroed by a meter counter `
       + `reset (${excluded.map(d => d.date).join(', ')}) and cannot be recovered`);
   }
+  const dNum = str => Math.round(Date.parse(str + 'T00:00:00') / 86400000);
+  const newestDay = (live.today && live.today.date) || days[days.length - 1].date;
+  $('strip-prev').disabled = dNum(from) <= dNum(days[0].date);
+  $('strip-next').disabled = dNum(to) >= dNum(newestDay);
+  renderRangeBars(inRange, from, to);
   $('range-note').textContent = notes.length ? `Note: ${notes.join('. ')}.` : '';
 }
 
@@ -3606,7 +3655,6 @@ function renderAll() {
       + 'publishing, or collection has stalled</div>' : '');
 
   renderHero(DATA.intraday || { rows: [] }, live);
-  renderStrip(DATA.history || {}, live);
   renderMonthly(DATA.history || { months: [] });
   renderCumulative(DATA.history || { days: [] });
   renderRange(DATA.history || { days: [] }, live);
