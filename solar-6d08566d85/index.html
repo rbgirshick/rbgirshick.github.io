@@ -331,8 +331,72 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
   .range-dates { margin-left: 0; flex-basis: 100%; flex-wrap: wrap; }
   /* Native date inputs carry a wide intrinsic size and will not shrink on
      their own - at 320px the pair pushed the page 9px wider than the screen. */
-  .range-dates input, .chart-nav input[type="date"] { min-width: 0; flex: 1 1 120px; }
+  .range-dates .dp, .chart-nav .dp { min-width: 0; flex: 1 1 132px; }
+  .range-dates .dp-field, .chart-nav .dp-field { flex: 1 1 auto; width: 100%; }
 }
+.dp { position: relative; display: inline-flex; align-items: stretch; min-width: 0; }
+.dp-field {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; width: 8.6em; min-width: 0;
+  color: var(--text-primary); background: var(--page);
+  border: 1px solid var(--border); border-right: none;
+  border-radius: 6px 0 0 6px; padding: 3px 6px;
+}
+.dp-field:focus { outline: none; border-color: var(--text-muted); }
+.dp-open {
+  font-size: 12px; line-height: 1; color: var(--text-secondary); cursor: pointer;
+  background: var(--page); border: 1px solid var(--border);
+  border-radius: 0 6px 6px 0; padding: 3px 7px;
+}
+.dp-open:hover { color: var(--text-primary); }
+.dp-pop {
+  position: fixed; z-index: 60; padding: 10px;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+.dp-head { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+.dp-head .dp-label {
+  flex: 1; text-align: center; font-size: 12px; font-weight: 600;
+  color: var(--text-primary); font-variant-numeric: tabular-nums;
+}
+.dp-step {
+  font-size: 13px; line-height: 1; min-width: 26px; height: 26px; cursor: pointer;
+  color: var(--text-secondary); background: transparent;
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.dp-step:hover:not(:disabled) { color: var(--text-primary); background: var(--page); }
+.dp-step:disabled { opacity: 0.3; cursor: default; }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dp-dow {
+  font-size: 9px; text-align: center; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.4px; padding-bottom: 2px;
+}
+.dp-day {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  min-width: 30px; height: 30px; cursor: pointer;
+  color: var(--text-primary); background: transparent;
+  border: 1px solid transparent; border-radius: 6px;
+}
+.dp-day:hover:not(:disabled) { background: var(--page); }
+.dp-day:disabled { color: var(--text-muted); opacity: 0.3; cursor: default; }
+.dp-day.other { color: var(--text-muted); }
+.dp-day.today { border-color: var(--text-muted); }
+.dp-day.on { background: var(--prod); color: #1a1205; font-weight: 700; }
+.dp-foot { display: flex; gap: 6px; margin-top: 8px; }
+.dp-foot button {
+  flex: 1; font-size: 10px; padding: 4px 6px; cursor: pointer;
+  color: var(--text-secondary); background: transparent;
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.dp-foot button:hover { color: var(--text-primary); background: var(--page); }
+/* Phones get bigger targets: with the gap and surrounding slop these clear the
+   44px guidance, and seven of them still fit inside 320px. */
+@media (max-width: 560px) {
+  .dp-field { font-size: 13px; padding: 5px 7px; width: 8.2em; }
+  .dp-open { font-size: 14px; padding: 5px 9px; }
+  .dp-day { min-width: 34px; height: 34px; font-size: 12px; }
+  .dp-step { min-width: 32px; height: 30px; font-size: 15px; }
+}
+
 svg.chart { display: block; width: 100%; height: auto; overflow: visible;
   font-family: 'IBM Plex Mono', monospace; }
 svg.chart text { font-variant-numeric: tabular-nums; }
@@ -367,11 +431,6 @@ svg.chart text { font-variant-numeric: tabular-nums; }
 
 /* --- 14-day bars -------------------------------------------------------- */
 .chart-nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.chart-nav input[type="date"] {
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
-  color: var(--text-primary); background: var(--page);
-  border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
-}
 button.ghost:disabled { opacity: 0.35; cursor: default; }
 button.ghost:disabled:hover { background: transparent; color: var(--text-secondary); }
 button.ghost.nav {
@@ -465,6 +524,15 @@ button.ghost.nav:disabled:hover { background: transparent; color: var(--text-sec
   margin-top: 2px; white-space: nowrap;
 }
 @media (max-width: 680px) { .roof-head { gap: 14px; } }
+/* The compass is a fixed-size drawing, so below about 340px the weather beside
+   it has nowhere left to go and pushed the page wider than the screen. Let it
+   wrap underneath instead; the nowrap on the detail lines is what made the
+   block refuse to narrow. */
+@media (max-width: 359px) {
+  .roof-head { flex-wrap: wrap; gap: 10px 14px; }
+  .weather { padding-top: 0; }
+  .wx-today, .wx-sun { white-space: normal; }
+}
 
 /* --- tables ------------------------------------------------------------ */
 .table-wrap { overflow-x: auto; max-height: 440px; overflow-y: auto; }
@@ -591,8 +659,11 @@ footer.colophon {
         <span class="push"></span>
         <div class="legend" id="hero-legend"></div>
         <div class="chart-nav">
-          <input type="date" id="hero-goto" aria-label="Go to day"
-                 data-tip="Jump to a day — limited to the days with 5-minute samples">
+          <span class="dp" data-dp><input class="dp-field" id="hero-goto" type="text"
+                 inputmode="numeric" autocomplete="off" spellcheck="false"
+                 placeholder="yyyy-mm-dd" aria-label="Go to day"
+                 data-tip="Jump to a day — limited to the days with 5-minute samples"><button
+                 class="dp-open" type="button" aria-label="Open calendar">▦</button></span>
           <button class="ghost" id="hero-today" type="button"
                   data-tip="Back to the latest day">Today</button>
           <button class="ghost nav" id="hero-prev" type="button"
@@ -619,9 +690,15 @@ footer.colophon {
         <div class="presets" id="range-presets"></div>
         <div class="range-dates">
           <label for="range-from">from</label>
-          <input type="date" id="range-from">
+          <span class="dp" data-dp><input class="dp-field" id="range-from" type="text"
+            inputmode="numeric" autocomplete="off" spellcheck="false"
+            placeholder="yyyy-mm-dd" aria-label="From date"><button
+            class="dp-open" type="button" aria-label="Open calendar">▦</button></span>
           <label for="range-to">to</label>
-          <input type="date" id="range-to">
+          <span class="dp" data-dp><input class="dp-field" id="range-to" type="text"
+            inputmode="numeric" autocomplete="off" spellcheck="false"
+            placeholder="yyyy-mm-dd" aria-label="To date"><button
+            class="dp-open" type="button" aria-label="Open calendar">▦</button></span>
         </div>
       </div>
       <div class="readouts" id="range-totals"></div>
@@ -635,8 +712,11 @@ footer.colophon {
         <span class="push"></span>
         <div class="legend" id="strip-legend"></div>
         <div class="chart-nav">
-          <input type="date" id="strip-goto" aria-label="Go to day"
-                 data-tip="Jump to a day — it becomes the right-hand edge of the window">
+          <span class="dp" data-dp><input class="dp-field" id="strip-goto" type="text"
+                 inputmode="numeric" autocomplete="off" spellcheck="false"
+                 placeholder="yyyy-mm-dd" aria-label="Go to day"
+                 data-tip="Jump to a day — it becomes the right-hand edge of the window"><button
+                 class="dp-open" type="button" aria-label="Open calendar">▦</button></span>
           <button class="ghost" id="strip-today" type="button"
                   data-tip="Back to the most recent 14 days">Today</button>
           <button class="ghost nav" id="strip-prev" type="button"
@@ -1684,6 +1764,228 @@ function renderStrip(history, live) {
     }));
 }
 
+/* ---------- date picker ---------------------------------------------------
+   Replaces <input type="date">, which is poor on a phone: iOS offers no
+   keyboard entry at all, both platforms bury month and year behind a wheel,
+   and a control clamped to a narrow span - as the hero's legitimately is,
+   since only 14 days carry 5-minute samples - reads as broken rather than
+   limited, because its arrows simply do nothing.
+
+   The field keeps its id, its .value, its .min/.max and its 'change' event, so
+   every caller written against the native input still works unchanged. What
+   differs is everything the reader touches: a text box that accepts a typed
+   date in several forms, separate month AND year steppers, and out-of-range
+   days drawn but disabled so the limit is visible instead of merely felt. */
+const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+  'August', 'September', 'October', 'November', 'December'];
+
+const iso = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const isISO = v => /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+/* Typed dates, forgivingly. Someone reaching for the keyboard on a phone is
+   already doing the awkward thing; refusing "8/9" would be gratuitous. */
+function parseTyped(text, fallbackYear) {
+  const t = (text || '').trim();
+  if (!t) return null;
+  let m;
+  if ((m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/)))
+    return iso(+m[1], +m[2] - 1, +m[3]);
+  if ((m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/)))       // US order
+    return iso(+m[3], +m[1] - 1, +m[2]);
+  if ((m = t.match(/^(\d{1,2})[-/.](\d{1,2})$/)))                   // this year
+    return iso(fallbackYear, +m[1] - 1, +m[2]);
+  if ((m = t.match(/^(\d{4})(\d{2})(\d{2})$/)))                     // 20260809
+    return iso(+m[1], +m[2] - 1, +m[3]);
+  return null;
+}
+
+/* Real dates only: 2026-02-31 parses arithmetically but is not a day. */
+function validISO(v) {
+  if (!isISO(v)) return null;
+  const [y, m, d] = v.split('-').map(Number);
+  const probe = new Date(y, m - 1, d);
+  return (probe.getFullYear() === y && probe.getMonth() === m - 1 && probe.getDate() === d)
+    ? v : null;
+}
+
+let dpPop = null, dpField = null, dpView = null;
+
+function dpClose() {
+  if (dpPop) { dpPop.remove(); dpPop = null; dpField = null; }
+}
+
+function dpCommit(field, value) {
+  if (field.value === value) { dpClose(); return; }
+  field.value = value;
+  field.dispatchEvent(new Event('change', { bubbles: true }));
+  dpClose();
+}
+
+function dpRender() {
+  const field = dpField;
+  const lo = validISO(field.min || '') || '';
+  const hi = validISO(field.max || '') || '';
+  const sel = validISO(field.value || '') || '';
+  const today = dayKey(Date.now() / 1000);
+  const y = dpView.y, m = dpView.m;
+
+  const first = new Date(y, m, 1);
+  const lead = first.getDay();
+  const days = new Date(y, m + 1, 0).getDate();
+  const prevDays = new Date(y, m, 0).getDate();
+
+  // a step is pointless if everything it would reveal is out of range
+  const monthOut = (yy, mm) => (hi && iso(yy, mm, 1) > hi)
+    || (lo && iso(yy, mm, new Date(yy, mm + 1, 0).getDate()) < lo);
+
+  clear(dpPop);
+  const head = document.createElement('div');
+  head.className = 'dp-head';
+  const step = (label, tip, dy, dm, off) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'dp-step'; b.textContent = label;
+    b.setAttribute('aria-label', tip);
+    b.disabled = off;
+    b.onclick = () => {
+      const d = new Date(y + dy, m + dm, 1);
+      dpView = { y: d.getFullYear(), m: d.getMonth() };
+      dpRender();
+    };
+    return b;
+  };
+  head.appendChild(step('«', 'Previous year', -1, 0, monthOut(y - 1, m)));
+  head.appendChild(step('‹', 'Previous month', 0, -1,
+    monthOut(new Date(y, m - 1, 1).getFullYear(), new Date(y, m - 1, 1).getMonth())));
+  const label = document.createElement('span');
+  label.className = 'dp-label';
+  label.textContent = `${MONTHS_LONG[m]} ${y}`;
+  head.appendChild(label);
+  head.appendChild(step('›', 'Next month', 0, 1,
+    monthOut(new Date(y, m + 1, 1).getFullYear(), new Date(y, m + 1, 1).getMonth())));
+  head.appendChild(step('»', 'Next year', 1, 0, monthOut(y + 1, m)));
+  dpPop.appendChild(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'dp-grid';
+  DOW.forEach((d, i) => {
+    const c = document.createElement('div');
+    c.className = 'dp-dow'; c.textContent = d;
+    c.setAttribute('aria-hidden', 'true');
+    grid.appendChild(c);
+  });
+  const cell = (text, value, other) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'dp-day' + (other ? ' other' : '');
+    b.textContent = text;
+    if (!value) { b.disabled = true; return b; }
+    const blocked = (lo && value < lo) || (hi && value > hi);
+    b.disabled = blocked;
+    if (value === sel) b.classList.add('on');
+    else if (value === today) b.classList.add('today');
+    b.setAttribute('aria-label', value);
+    if (!blocked) b.onclick = () => dpCommit(field, value);
+    return b;
+  };
+  for (let i = lead - 1; i >= 0; i--) {
+    const d = new Date(y, m - 1, prevDays - i);
+    grid.appendChild(cell(prevDays - i, iso(d.getFullYear(), d.getMonth(), d.getDate()), true));
+  }
+  for (let d = 1; d <= days; d++) grid.appendChild(cell(d, iso(y, m, d), false));
+  const tail = (7 - ((lead + days) % 7)) % 7;
+  for (let d = 1; d <= tail; d++) {
+    const nd = new Date(y, m + 1, d);
+    grid.appendChild(cell(d, iso(nd.getFullYear(), nd.getMonth(), nd.getDate()), true));
+  }
+  dpPop.appendChild(grid);
+
+  const foot = document.createElement('div');
+  foot.className = 'dp-foot';
+  const jump = (text, value) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = text;
+    b.disabled = !value || (lo && value < lo) || (hi && value > hi);
+    b.onclick = () => dpCommit(field, value);
+    return b;
+  };
+  foot.appendChild(jump('Today', today));
+  if (hi && hi !== today) foot.appendChild(jump('Latest', hi));
+  if (lo) foot.appendChild(jump('Earliest', lo));
+  dpPop.appendChild(foot);
+}
+
+function dpOpen(field) {
+  if (dpField === field) { dpClose(); return; }
+  dpClose();
+  dpField = field;
+  dpPop = document.createElement('div');
+  dpPop.className = 'dp-pop';
+  dpPop.setAttribute('role', 'dialog');
+  dpPop.setAttribute('aria-label', 'Choose a date');
+  /* Inside .viz-root, not on <body>: the whole palette is scoped to that
+     element, so a popover parented to the document would resolve every
+     var(--…) to nothing and render with a transparent background over the
+     chart. Still position:fixed, so nothing clips it. */
+  (document.querySelector('.viz-root') || document.body).appendChild(dpPop);
+
+  const start = validISO(field.value || '') || validISO(field.max || '')
+    || dayKey(Date.now() / 1000);
+  dpView = { y: +start.slice(0, 4), m: +start.slice(5, 7) - 1 };
+  dpRender();
+
+  // fixed to the viewport, then pulled back inside it - on a narrow screen the
+  // calendar is wider than the field it hangs off
+  const r = field.getBoundingClientRect();
+  const w = dpPop.offsetWidth, h = dpPop.offsetHeight;
+  let left = Math.min(r.left, window.innerWidth - w - 8);
+  let top = r.bottom + 6;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  dpPop.style.left = `${Math.max(8, left)}px`;
+  dpPop.style.top = `${top}px`;
+}
+
+function wireDatePickers() {
+  for (const box of document.querySelectorAll('[data-dp]')) {
+    const field = box.querySelector('.dp-field');
+    const open = box.querySelector('.dp-open');
+    open.addEventListener('click', e => { e.stopPropagation(); dpOpen(field); });
+
+    // typing commits on Enter or on leaving; anything unparseable snaps back
+    const commitTyped = () => {
+      const parsed = validISO(parseTyped(field.value, +(field.dataset.was || dayKey(Date.now() / 1000)).slice(0, 4)) || '');
+      const lo = validISO(field.min || ''), hi = validISO(field.max || '');
+      let v = parsed;
+      if (v && lo && v < lo) v = lo;
+      if (v && hi && v > hi) v = hi;
+      if (!v) { field.value = field.dataset.was || ''; return; }
+      field.dataset.was = v;
+      if (field.value !== v) { field.value = v; }
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    field.addEventListener('focus', () => { field.dataset.was = field.value; dpClose(); });
+    field.addEventListener('blur', commitTyped);
+    field.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commitTyped(); field.blur(); }
+      if (e.key === 'Escape') { field.value = field.dataset.was || ''; field.blur(); }
+    });
+  }
+  /* Close on pointerdown rather than click, and this is not a detail: a
+     stepper rebuilds the calendar inside its own click handler, so by the time
+     that click reaches the document its target has been detached and no longer
+     counts as inside the popover. Closing on click therefore shut the calendar
+     on every attempt to change month or year - the exact thing the steppers
+     exist for. pointerdown is evaluated before the rebuild, so containment is
+     still true. The open button is exempt so it can keep toggling. */
+  document.addEventListener('pointerdown', e => {
+    if (!dpPop || dpPop.contains(e.target)) return;
+    if (e.target.closest && e.target.closest('.dp-open')) return;
+    dpClose();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') dpClose(); });
+  window.addEventListener('resize', dpClose);
+  window.addEventListener('scroll', dpClose, true);
+}
+
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const monthName = ym => `${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`;
 
@@ -2293,6 +2595,16 @@ function wireRangeControls() {
 function renderRange(history, live) {
   wireRangeControls();
   const days = dailySeries(history);
+  // bounds for the calendar: days outside the archive are drawn but disabled,
+  // which reads as a limit rather than as a control that ignores you
+  if (days.length) {
+    for (const id of ['range-from', 'range-to']) {
+      const f = $(id);
+      f.min = days[0].date;
+      f.max = (live.today && live.today.date > days[days.length - 1].date)
+        ? live.today.date : days[days.length - 1].date;
+    }
+  }
   if (live.today && !days.some(d => d.date === live.today.date)) {
     days.push({ date: live.today.date, pv_kwh: live.today.pv_kwh,
       consumption_kwh: live.today.consumption_kwh, net_kwh: live.today.net_kwh,
@@ -3238,6 +3550,8 @@ let KEY_MATERIAL = null;      // held until it has proved it can decrypt
 /* Fetch the first payload and start the page. Separated from start() so the
    retry button can run it again with the in-memory key - a fragment key that
    has not been stored yet would not survive a page reload. */
+wireDatePickers();
+
 async function boot() {
   try {
     DATA.live = await fetchAndDecrypt('live');
