@@ -1194,11 +1194,19 @@ function renderHero(intraday, live) {
         + `<div class="row">expected<span class="num">${fmt(fc.kwh, 1)} kWh</span></div>`
         + (fc.low !== undefined
           ? `<div class="row">likely range<span class="num">${fmt(fc.low, 1)}–${fmt(fc.high, 1)} kWh</span></div>` : '')
-        + `<div class="row">typical error<span class="num">±${fmt(fc.mae_kwh, 1)} kWh</span></div>`
-        + `<div class="row">fit<span class="num">r² ${fmt(fc.r2, 2)}, ${fc.days} days</span></div>`
+        + `<div class="row">typical miss<span class="num">±${fmt(fc.band_kwh ?? fc.mae_kwh, 1)} kWh</span></div>`
+        + `<div class="row">array fit<span class="num">r² ${fmt(fc.r2, 2)}, ${fc.days} days</span></div>`
         + '<div style="color:var(--text-muted);margin-top:3px">today\'s forecast sunshine times '
         + 'this array\'s own measured yield, spread across the day by '
-        + (plan.useHourly ? 'the hourly cloud forecast' : "the sun's elevation") + '</div>' });
+        + (plan.useHourly ? 'the hourly cloud forecast' : "the sun's elevation") + '. '
+        + (fc.calibrated
+          ? 'The sunshine forecast runs optimistic here, so it is scaled back by a factor '
+            + 'learned from past forecasts, and the miss quoted is what this prediction '
+            + 'actually achieves - not the array fit\'s residual, which is a third smaller '
+            + 'because it assumes the weather was known.'
+          : 'Not yet calibrated against past forecasts, so the range is the array fit\'s '
+            + 'residual and is optimistic.')
+        + '</div>' });
 
     /* 2. where the day is now heading: measured so far, plus the sunshine still
        to come. The band opens from the current point rather than from the
@@ -1212,7 +1220,8 @@ function renderHero(intraday, live) {
     if (plan.elapsed > 0.002 && plan.elapsed < 0.995) {
       const rest = plan.curve.filter(([sec]) => sec >= plan.nowSecs);
       const at = f => plan.actual + fc.kwh * (f - plan.elapsed);
-      const band = fc.mae_kwh || 0;
+      // the miss this prediction really makes, not the physical fit's residual
+      const band = fc.band_kwh ?? fc.mae_kwh ?? 0;
       if (rest.length > 1 && band > 0) {
         const up = rest.map(([sec, f]) => [px(sec), Yb(at(f) + band * (f - plan.elapsed))]);
         const dn = rest.map(([sec, f]) => [px(sec), Yb(at(f) - band * (f - plan.elapsed))]).reverse();
