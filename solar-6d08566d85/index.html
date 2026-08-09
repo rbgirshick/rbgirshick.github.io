@@ -306,6 +306,21 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
 .chip-rows .year-chips { margin-bottom: 0; margin-left: auto; }
 @media (max-width: 680px) { .chip-rows .year-chips { margin-left: 0; } }
 
+.explain { font-size: 12px; line-height: 1.55; color: var(--text-secondary);
+  max-width: 62em; margin: 2px 0 14px; }
+.explain b { color: var(--text-primary); font-weight: 600; }
+.explain .formula {
+  display: block; margin: 8px 0; padding: 9px 12px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 1.5;
+  color: var(--text-primary); background: var(--page);
+  border-left: 2px solid var(--prod); border-radius: 0 6px 6px 0;
+}
+.explain .formula i { color: var(--text-muted); font-style: normal; }
+.explain p { margin: 7px 0 0; }
+.sub-head {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.9px;
+  text-transform: uppercase; color: var(--text-muted); margin: 22px 0 6px;
+}
 .chart-head { display: flex; align-items: center; gap: 10px;
   flex-wrap: wrap; margin: 14px 0 2px; }
 .range-note {
@@ -790,13 +805,42 @@ footer.colophon {
         <h2 class="eyebrow">Long run</h2>
         <p class="sub" id="health-sub"></p>
       </div>
+      <p class="sub-head">Output against its own past</p>
+      <div class="explain">
+        Each month the array is scored against <b>itself when this record began</b>, not against a
+        brochure figure:
+        <span class="formula">index &nbsp;=&nbsp; kWh actually produced &nbsp;÷&nbsp; kWh this array
+          would have produced<br><i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+          in the same sunshine and heat, back at the baseline</i></span>
+        Because the same weather goes into both halves, a dull month does not count against the
+        panels. <b>1.00 means nothing has changed.</b>
+        <p><b>How to read it.</b> The shaded band is one standard deviation of this site's own
+        month-to-month scatter. Inside it, a month is indistinguishable from normal. One point
+        below is noise; <b>two or three in a row below the band is a signal</b> — soiling, snow,
+        shade that has grown, or a string offline. A jump back up usually means rain or a wash.</p>
+        <p><b>What it will not tell you.</b> Panel ageing runs about 0.5% a year, far below the
+        monthly scatter, so this cannot show gradual decline for a year or two yet. It is a fault
+        detector, not a degradation meter — and an alert fires if two complete months fall below
+        0.90.</p>
+      </div>
       <div class="chart-box">
         <svg class="chart" id="health-chart" viewBox="0 0 1000 220" role="img"
              aria-label="Monthly output against a frozen baseline model"></svg>
         <div class="tooltip" id="health-tip"></div>
       </div>
       <p class="range-note" id="health-note"></p>
-      <div class="table-wrap" id="bills-table" style="margin-top:16px"></div>
+      <p class="sub-head">Against the utility meter</p>
+      <div class="explain">
+        Net grid here is <b>computed, not measured</b>: these CTs sit on the wrong side of the
+        solar tie-in, so every consumption figure is reconstructed in software. The meter is the
+        only instrument in this system not derived from the PVS6, which makes it the only
+        independent check there is.
+        <span class="formula">difference &nbsp;=&nbsp; our net grid &nbsp;−&nbsp; the utility's net
+          grid<br>as a % of &nbsp;<i>(imported + exported)</i>, since net crosses zero twice a
+          year</span>
+      </div>
+      <div class="table-wrap" id="bills-table" style="margin-top:4px"></div>
       <p class="range-note" id="bills-note"></p>
     </section>
 
@@ -3675,11 +3719,12 @@ function renderHealth(history) {
     });
 
     const last = series[series.length - 1];
+    const runs = series.slice(-3).filter(p => p.index < 1 - SD).length;
     $('health-note').textContent =
-      `Latest complete month ${fmt(last.index, 2)}. The shaded band is one standard deviation `
-      + `of this site's own month-to-month scatter: inside it nothing is distinguishable from `
-      + `normal. Too coarse to show slow ageing, sharp enough to show a string dropping out, `
-      + `snow lying, or a wash taking effect.`;
+      `Latest complete month ${fmt(last.index, 2)}`
+      + (runs >= 2
+        ? ` — ${runs} of the last 3 months sit below the band, which is worth investigating.`
+        : `, inside the band. Nothing to act on.`);
   }
 
   // --- the utility meter -------------------------------------------------
@@ -3710,12 +3755,9 @@ function renderHealth(history) {
     ? Math.max(...complete.map(b => Math.abs(b.diff_pct_of_flow || 0))) : null;
   $('bills-note').textContent = worst === null
     ? 'No billing period is yet covered by complete measured data.'
-    : `Net grid here is computed, not measured: these CTs sit on the wrong side of the solar `
-      + `tie-in, so every consumption figure is reconstructed in software. The meter is the only `
-      + `independent check that exists, and across fully measured periods the two agree to within `
-      + `${fmt(worst, 1)}% of the energy crossing it — the residual is the difference between `
-      + `monitoring-grade CTs and a revenue meter, not the arithmetic. Percentages are of total `
-      + `flow, since net crosses zero twice a year.`;
+    : `Across fully measured periods the two agree to within ${fmt(worst, 1)}% — close enough `
+      + `that the reconstruction is confirmed, and the residual is what you would expect between `
+      + `monitoring-grade CTs and a revenue meter rather than an error in the arithmetic.`;
 }
 
 function renderRecords(history, live) {
