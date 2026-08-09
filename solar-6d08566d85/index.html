@@ -1283,14 +1283,18 @@ function renderHero(intraday, live) {
           ? `<div class="row">likely range<span class="num">${fmt(fc.low, 1)}–${fmt(fc.high, 1)} kWh</span></div>` : '')
         + `<div class="row">typical miss<span class="num">±${fmt(fc.band_kwh ?? fc.mae_kwh, 1)} kWh</span></div>`
         + `<div class="row">array fit<span class="num">r² ${fmt(fc.r2, 2)}, ${fc.days} days</span></div>`
+        + (fc.temp_pct_per_c && fc.temp_max_c !== null && fc.temp_max_c !== undefined
+          ? `<div class="row">heat<span class="num">${fmt(fc.temp_max_c, 0)}°C high, `
+            + `${fmt(fc.temp_pct_per_c, 2)}%/°C</span></div>` : '')
         + '<div style="color:var(--text-muted);margin-top:3px">today\'s forecast sunshine times '
         + 'this array\'s own measured yield, spread across the day by '
         + (plan.useHourly ? 'the hourly cloud forecast' : "the sun's elevation") + '. '
         + (fc.calibrated
-          ? 'The sunshine forecast runs optimistic here, so it is scaled back by a factor '
-            + 'learned from past forecasts, and the miss quoted is what this prediction '
-            + 'actually achieves - not the array fit\'s residual, which is a third smaller '
-            + 'because it assumes the weather was known.'
+          ? 'The sunshine forecast runs slightly optimistic here, so it is scaled back by a '
+            + 'factor learned from past forecasts, and panels lose efficiency as they heat, '
+            + 'so the day\'s forecast high derates it too. The miss quoted is what this '
+            + 'prediction actually achieves, not the array fit\'s residual, which assumes '
+            + 'the weather was known.'
           : 'Not yet calibrated against past forecasts, so the range is the array fit\'s '
             + 'residual and is optimistic.')
         + '</div>' });
