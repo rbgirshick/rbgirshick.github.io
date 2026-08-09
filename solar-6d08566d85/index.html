@@ -3363,44 +3363,72 @@ const WMO = [
 ];
 const wmo = code => WMO.find(([codes]) => codes.includes(code)) || [[], '·', 'Unknown'];
 
+/* The panel leads with what was MEASURED and keeps the model for what can only
+   be predicted.
+
+   Three readings beat a forecast grid here. The array's own output against what
+   it has managed at this minute in this season is the only instrument actually
+   on the roof; the nearest reporting station says what an observer would see;
+   and aerosol depth separates smoke from cloud, which a model conflates and a
+   solar array very much does not. On 2026-08-09 the model said 58% cloud over a
+   sky the array read as 91% clear and the station called "Smoke". */
 function renderWeather(live) {
   const box = $('weather');
   const w = live.weather;
   if (!w || !w.current) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
   const c = w.current, t = w.today || {};
-  // The payload names its own units rather than the page assuming them.
+  const obs = w.observed || {};
+  const sky = obs.sky, station = obs.station, air = obs.air;
   const u = w.units || { temp: '°F', wind: 'mph', precip: 'in', radiation: 'kWh/m²' };
-  const [, icon, label] = wmo(c.code);
+  const [, modelIcon, modelLabel] = wmo(c.code);
   const [, , dayLabel] = wmo(t.code);
   const clock = iso => iso ? iso.slice(11, 16) : '—';
   const deg = v => (v === null || v === undefined) ? '—' : `${Math.round(v)}°`;
+  const unitLetter = esc(u.temp.replace('°', ''));
+
+  // Sun as the array sees it, not cloud as a model imagines it.
+  const pct = sky ? Math.round(sky.clearness * 100) : null;
+  const icon = sky
+    ? (pct >= 90 ? (air && air.hazy ? '🌤' : '☀︎') : pct >= 70 ? '🌤' : pct >= 45 ? '⛅' : '☁︎')
+    : modelIcon;
+  const label = (sky && sky.description) || modelLabel;
+  const temp = station && station.temp_f !== undefined ? station.temp_f : c.temp;
 
   box.innerHTML =
     `<div class="wx-now"><span class="wx-icon">${icon}</span>`
-    + `<span class="wx-temp">${deg(c.temp)}</span>`
-    + `<span class="wx-unit">${esc(u.temp.replace('°', ''))}</span></div>`
-    + `<div class="wx-desc">${esc(label)}${c.cloud_pct !== undefined
-        ? ` · ${Math.round(c.cloud_pct)}% cloud` : ''}</div>`
-    + `<div class="wx-today">today ${esc(dayLabel.toLowerCase())} · `
-    + `${deg(t.temp_max)}/${deg(t.temp_min)}${esc(u.temp.replace('°', ''))}`
-    + `${t.precip_chance ? ` · ${Math.round(t.precip_chance)}% rain` : ''}</div>`
-    + `<div class="wx-sun">☀ ${clock(t.sunrise)} – ${clock(t.sunset)}</div>`;
+    + `<span class="wx-temp">${deg(temp)}</span>`
+    + `<span class="wx-unit">${unitLetter}</span></div>`
+    + `<div class="wx-desc">${esc(label)}`
+    + (pct !== null ? ` · ${pct}% of full sun` : '') + '</div>'
+    + (station && station.description
+      ? `<div class="wx-today">${esc(station.description.toLowerCase())} at `
+        + `${esc(station.station)} · ${fmt(station.km, 0)} km</div>`
+      : `<div class="wx-today">today ${esc(dayLabel.toLowerCase())} · `
+        + `${deg(t.temp_max)}/${deg(t.temp_min)}${unitLetter}</div>`)
+    + `<div class="wx-sun">☀ ${clock(t.sunrise)} – ${clock(t.sunset)}`
+    + `${t.temp_max !== undefined ? ` · ${deg(t.temp_max)}/${deg(t.temp_min)}${unitLetter}` : ''}</div>`;
 
   const row = (k, v) => `<div class="row">${k}<span class="num">${v}</span></div>`;
-  // deg() already prints the ° - the unit string adds only the letter
-  const unitLetter = esc(u.temp.replace('°', ''));
-  box.dataset.tip = '<b>Weather now</b>'
-    + row(esc(label), `${deg(c.temp)}${unitLetter}`)
-    + row('feels like', `${deg(c.feels)}${unitLetter}`)
-    + row('cloud', `${Math.round(c.cloud_pct)}%`)
-    + row('wind', `${fmt(c.wind, 1)} ${esc(u.wind)}`)
-    + '<b style="display:block;margin-top:5px">Today</b>'
+  const note = txt => `<div style="color:var(--text-muted);margin-top:3px">${txt}</div>`;
+  box.dataset.tip = '<b>Measured</b>'
+    + (sky ? row('sun reaching the array', `${pct}%`) : '')
+    + (station ? row(`at ${esc(station.station)} (${fmt(station.km, 0)} km)`,
+        `${esc(station.description || '—')}, ${deg(station.temp_f)}${unitLetter}`) : '')
+    + (station && station.visibility_km !== null && station.visibility_km !== undefined
+        ? row('visibility', `${fmt(station.visibility_km, 0)} km`) : '')
+    + (air && air.pm2_5 !== null && air.pm2_5 !== undefined
+        ? row('smoke (PM2.5)', `${fmt(air.pm2_5, 1)} µg/m³${air.aqi ? `, AQI ${air.aqi}` : ''}`) : '')
+    + (sky ? note(`Measured by the array itself: output now against the best this array has done `
+        + `at this time of day across ${sky.from_days} comparable days. It reads sunlight, not `
+        + `cloud - smoke dims the sun while leaving the sky clear.`) : '')
+    + '<b style="display:block;margin-top:6px">Forecast</b>'
     + row(esc(dayLabel), `${deg(t.temp_max)} / ${deg(t.temp_min)}${unitLetter}`)
     + row('rain chance', `${Math.round(t.precip_chance || 0)}%`)
     + row('sunshine', `${fmt(t.radiation_kwh_m2, 1)} ${esc(u.radiation)}`)
     + row('daylight', `${clock(t.sunrise)} – ${clock(t.sunset)}`)
-    + '<div style="color:var(--text-muted);margin-top:3px">read by the pi, not by this browser</div>';
+    + row('model cloud', `${Math.round(c.cloud_pct)}%`)
+    + note(`Forecast from ${esc(w.model || 'a weather model')}; read by the pi, not by this browser.`);
   box.tabIndex = 0;
 }
 
