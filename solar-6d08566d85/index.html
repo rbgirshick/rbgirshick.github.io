@@ -2916,7 +2916,8 @@ function renderArray(live) {
   clear(box);
   const list = live.inverters || [];
   $('array-sub').textContent =
-    `${list.length} microinverters in three strings, drawn as they sit on the roof · shaded by output right now`;
+    `${list.length} microinverters in three strings, drawn as they sit on the roof · `
+    + `shaded by output right now · each panel judged against its own string`;
 
   const ramp = ['--amber-100', '--amber-250', '--amber-400'].map(css);
   const rampBox = $('array-ramp');
@@ -2936,6 +2937,46 @@ function renderArray(live) {
   const max = Math.max(...vals, 0.001);
   const bySerialTail = new Map(list.map(inv => [inv.serial.slice(-6), inv]));
 
+  /* Judge every panel against its OWN STRING, not the whole array.
+
+     The strings do not face the same way - string 3 is on the east roof and
+     loses the sun by late afternoon, the others carry on - so a panel compared
+     against the array average is being marked against a different exam. On a
+     clear evening the entire east string reads as failing and nothing is wrong
+     with any of it. Within a string the panels see nearly the same sky, so a
+     genuine laggard stands out at once.
+
+     The benchmark is the MEDIAN of the string, not its mean: string 3 has four
+     modules and one of them is faulty, and a mean would let the bad panel drag
+     down the very yardstick meant to expose it. */
+  const stringOf = new Map();
+  for (const row of ROOF) {
+    if (!row.tails) continue;
+    const name = (row.label || '').split('·')[0].trim();
+    for (const tail of row.tails) stringOf.set(tail, name);
+  }
+  const median = xs => {
+    const v = xs.slice().sort((a, b) => a - b);
+    if (!v.length) return null;
+    const m = v.length >> 1;
+    return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+  };
+  const stringBench = new Map();
+  for (const [tail, name] of stringOf) {
+    if (!stringBench.has(name)) stringBench.set(name, []);
+    const inv = bySerialTail.get(tail);
+    if (inv && inv.today_kwh !== null && inv.today_kwh !== undefined) {
+      stringBench.get(name).push(inv.today_kwh);
+    }
+  }
+  for (const [name, xs] of stringBench) stringBench.set(name, median(xs));
+  const pctOfString = inv => {
+    const name = stringOf.get(inv.serial.slice(-6));
+    const bench = stringBench.get(name);
+    if (!name || !bench || inv.today_kwh === null || inv.today_kwh === undefined) return null;
+    return Math.round(inv.today_kwh / bench * 100);
+  };
+
   const panelCell = inv => {
     const cell = document.createElement('div');
     cell.className = 'panel';
@@ -2952,7 +2993,8 @@ function renderArray(live) {
       cell.style.color = '#0b0b0b';
     }
     const v = inv.today_kwh;
-    const low = inv.pct_of_avg !== undefined && inv.pct_of_avg < 80;
+    const rel = pctOfString(inv);
+    const low = rel !== null ? rel < 85 : (inv.pct_of_avg !== undefined && inv.pct_of_avg < 80);
     const working = (inv.state || '').toLowerCase() === 'working';
     // The big number is the day's energy; the status line always carries the
     // live watts so cumulative and instantaneous never get mistaken for each
@@ -2969,8 +3011,10 @@ function renderArray(live) {
       `<div class="row">now<span class="num">${Math.round((inv.kw || 0) * 1000)} W</span></div>` +
       `<div class="row">today<span class="num">${fmt(v, 2)} kWh</span></div>` +
       `<div class="row">lifetime<span class="num">${fmt(inv.lifetime_kwh, 0)} kWh</span></div>` +
+      (rel !== null
+        ? `<div class="row">vs. its string today<span class="num">${rel}%</span></div>` : '') +
       (inv.pct_of_avg !== undefined
-        ? `<div class="row">vs. average panel today<span class="num">${esc(inv.pct_of_avg)}%</span></div>` : '') +
+        ? `<div class="row">vs. whole array<span class="num">${esc(inv.pct_of_avg)}%</span></div>` : '') +
       (!working ? `<div class="row">state<span class="num">${esc(inv.state)}</span></div>` : '');
     cell.tabIndex = 0;
     return cell;
