@@ -306,6 +306,20 @@ button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
 .chip-rows .year-chips { margin-bottom: 0; margin-left: auto; }
 @media (max-width: 680px) { .chip-rows .year-chips { margin-left: 0; } }
 
+/* Folded away by default. The explanation matters once, when someone meets the
+   plot for the first time; after that it is furniture in front of the data. */
+details.explainer { margin: 2px 0 12px; }
+details.explainer > summary {
+  cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.4px;
+  color: var(--text-muted); padding: 3px 0;
+}
+details.explainer > summary::-webkit-details-marker { display: none; }
+details.explainer > summary::before { content: '▸'; font-size: 9px; line-height: 1; }
+details.explainer[open] > summary::before { content: '▾'; }
+details.explainer > summary:hover { color: var(--text-primary); }
+details.explainer > summary:focus-visible { outline: 1px solid var(--text-muted); outline-offset: 3px; }
+details.explainer .explain { margin: 8px 0 0; }
 .explain { font-size: 12px; line-height: 1.55; color: var(--text-secondary);
   max-width: 62em; margin: 2px 0 14px; }
 .explain b { color: var(--text-primary); font-weight: 600; }
@@ -806,6 +820,8 @@ footer.colophon {
         <p class="sub" id="health-sub"></p>
       </div>
       <p class="sub-head">Output against its own past</p>
+      <details class="explainer">
+        <summary>what this plot is, and how to read it</summary>
       <div class="explain">
         <b>The vertical axis is one month's output as a percentage of what this same array would
         have produced in the same weather when the record began.</b> Both sides of that division
@@ -829,6 +845,7 @@ footer.colophon {
         detector, not a degradation meter — and an alert fires if two complete months fall below
         90%.</p>
       </div>
+      </details>
       <div class="chart-box">
         <svg class="chart" id="health-chart" viewBox="0 0 1000 220" role="img"
              aria-label="Monthly output against a frozen baseline model"></svg>
@@ -836,6 +853,8 @@ footer.colophon {
       </div>
       <p class="range-note" id="health-note"></p>
       <p class="sub-head">Against the utility meter</p>
+      <details class="explainer">
+        <summary>why this comparison matters, and what the percentage means</summary>
       <div class="explain">
         Net grid here is <b>computed, not measured</b>: these CTs sit on the wrong side of the
         solar tie-in, so every consumption figure is reconstructed in software. The meter is the
@@ -845,6 +864,7 @@ footer.colophon {
           grid<br>as a % of &nbsp;<i>(imported + exported)</i>, since net crosses zero twice a
           year</span>
       </div>
+      </details>
       <div class="table-wrap" id="bills-table" style="margin-top:4px"></div>
       <p class="range-note" id="bills-note"></p>
     </section>
