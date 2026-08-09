@@ -807,14 +807,16 @@ footer.colophon {
       </div>
       <p class="sub-head">Output against its own past</p>
       <div class="explain">
-        Each month the array is scored against <b>itself when this record began</b>, not against a
-        brochure figure:
-        <span class="formula">index &nbsp;=&nbsp; kWh actually produced &nbsp;÷&nbsp; kWh this array
-          would have produced<br><i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-          in the same sunshine and heat, back at the baseline</i></span>
-        Because the same weather goes into both halves, a dull month does not count against the
-        panels. <b>1.00 means nothing has changed.</b>
+        <b>The vertical axis is one month's output as a percentage of what this same array would
+        have produced in the same weather when the record began.</b> Both sides of that division
+        are kWh, so the percentage has no units of its own — it is a comparison, not a quantity:
+        <span class="formula">this month &nbsp;=&nbsp; <b>612 kWh</b> actually produced<br>
+          baseline &nbsp;&nbsp;&nbsp;=&nbsp; <b>606 kWh</b> the array would have made in the same
+          sun and heat<br>
+          <i>plotted</i> &nbsp;&nbsp;&nbsp;=&nbsp; 612 ÷ 606 &nbsp;=&nbsp; <b>101%</b></span>
+        Because the same weather appears on both sides, a dull month does not count against the
+        panels — only the array itself can move this number. <b>100% means nothing has
+        changed</b>; below means the array is producing less than it used to for the same sun.
         <p><b>How to read it.</b> The shaded band is one standard deviation of this site's own
         month-to-month scatter. Inside it, a month is indistinguishable from normal. One point
         below is noise; <b>two or three in a row below the band is a signal</b> — soiling, snow,
@@ -822,7 +824,7 @@ footer.colophon {
         <p><b>What it will not tell you.</b> Panel ageing runs about 0.5% a year, far below the
         monthly scatter, so this cannot show gradual decline for a year or two yet. It is a fault
         detector, not a degradation meter — and an alert fires if two complete months fall below
-        0.90.</p>
+        90%.</p>
       </div>
       <div class="chart-box">
         <svg class="chart" id="health-chart" viewBox="0 0 1000 220" role="img"
@@ -3655,7 +3657,7 @@ function renderHealth(history) {
     const b = h.baseline || {};
     $('health-sub').textContent =
       `each month against the array as it was in ${b.from ? b.from.slice(0, 7) : 'the baseline'}`
-      + `–${b.to ? b.to.slice(0, 7) : ''} · 1.00 means unchanged`;
+      + `–${b.to ? b.to.slice(0, 7) : ''} · 100% means unchanged`;
 
     const W = chartW(svg), narrow = W < 560;
     const H = narrow ? 210 : 220;
@@ -3680,8 +3682,15 @@ function renderHealth(history) {
       const one = Math.abs(v - 1) < 1e-9;
       svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v),
         stroke: one ? css('--axis') : css('--grid'), 'stroke-width': one ? 1.4 : 1 }));
-      text(svg, padL - 8, Y(v) + 3.5, v.toFixed(2), { 'text-anchor': 'end' });
+      // Percent, not a bare ratio. A column of numbers around 1.00 with no unit
+      // on it reads as a measurement whose units went missing; "100%" carries
+      // its own explanation - it is obviously a comparison, and obviously to
+      // something that counts as 100.
+      text(svg, padL - 8, Y(v) + 3.5, `${Math.round(v * 100)}%`, { 'text-anchor': 'end' });
     }
+    // anchored inside the plot: 'of baseline' is far too wide to hang off a
+    // 48px gutter the way a short unit like 'kWh' can
+    text(svg, padL + 2, top - 6, 'percent of baseline', { 'text-anchor': 'start' });
 
     const pts = series.map((p, i) => [X(i), Y(p.index)]);
     svg.appendChild(el('path', {
@@ -3704,9 +3713,11 @@ function renderHealth(history) {
       hit.addEventListener('mouseenter', () => {
         const box = svg.getBoundingClientRect();
         tip.innerHTML = `<b>${MONTHS[+p.month.slice(5) - 1]} ${p.month.slice(0, 4)}</b>`
-          + `<div class="row">index<span class="num">${fmt(p.index, 3)}</span></div>`
+          + `<div class="row">output<span class="num">${fmt(p.index * 100, 1)}% of baseline</span></div>`
           + `<div class="row">produced<span class="num">${fmt(p.actual_kwh, 0)} kWh</span></div>`
           + `<div class="row">baseline would give<span class="num">${fmt(p.expected_kwh, 0)} kWh</span></div>`
+          + `<div class="row">so<span class="num">${fmt(p.actual_kwh, 0)} ÷ ${fmt(p.expected_kwh, 0)}`
+          + ` = ${fmt(p.index, 3)}</span></div>`
           + `<div class="row">days counted<span class="num">${p.days}</span></div>`
           + '<div style="color:var(--text-muted);margin-top:3px">weather and temperature are '
           + 'already divided out, so this is the array, not the month</div>';
@@ -3721,7 +3732,7 @@ function renderHealth(history) {
     const last = series[series.length - 1];
     const runs = series.slice(-3).filter(p => p.index < 1 - SD).length;
     $('health-note').textContent =
-      `Latest complete month ${fmt(last.index, 2)}`
+      `Latest complete month ${fmt(last.index * 100, 0)}% of baseline`
       + (runs >= 2
         ? ` — ${runs} of the last 3 months sit below the band, which is worth investigating.`
         : `, inside the band. Nothing to act on.`);
