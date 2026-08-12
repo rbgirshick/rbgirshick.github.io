@@ -1289,8 +1289,11 @@ function renderHero(intraday, live) {
   }
 
   // the pane's range becomes the whole day's, which is the point: the actual
-  // line is then read as a fraction of where the day is heading
-  const b = scale(cum, [1, 2, 3], plan ? [fc.kwh, plan.nowcast] : []);
+  // line is then read as a fraction of where the day is heading. Only the
+  // projection is drawn, so only the projection sets the ceiling - including
+  // the forecast here would leave dead space above whenever the day is running
+  // below it.
+  const b = scale(cum, [1, 2, 3], plan ? [plan.nowcast] : []);
   const Ya = v => A.top + (1 - (v - a.lo) / (a.hi - a.lo)) * (A.bot - A.top);
   const Yb = v => B.top + (1 - (v - b.lo) / (b.hi - b.lo)) * (B.bot - B.top);
 
@@ -1338,41 +1341,12 @@ function renderHero(intraday, live) {
     const px = sec => padL + sec / 86400 * (W - padL - padR);
     const labels = [];
 
-    // 1. what the morning predicted for the whole day
-    const fPts = plan.curve.map(([sec, f]) => [px(sec), Yb(fc.kwh * f)]);
-    svg.appendChild(el('path', {
-      d: fPts.map((q, i) => `${i ? 'L' : 'M'} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join(' '),
-      fill: 'none', stroke: css('--prod'), 'stroke-width': 1.5, 'stroke-opacity': 0.35,
-      'stroke-dasharray': '5 4', 'stroke-linejoin': 'round' }));
-    /* The projection is ALWAYS shown for today, and the forecast label only
-       when the two have parted company. An element that vanishes reads as one
-       that is broken - twice now the projection's absence has been reported as
-       a fault - and the number a reader wants is the live one, so that is the
-       label that stays. Before the day has started the two agree by
-       construction, and printing the same figure twice would be noise. */
-    const diverged = Math.abs(plan.nowcast - fc.kwh) >= 0.5;
-    if (diverged) labels.push({ y: Yb(fc.kwh), text: `≈${fmt(fc.kwh, 0)} forecast`, dim: true,
-      tip: '<b>Forecast for today</b>'
-        + `<div class="row">expected<span class="num">${fmt(fc.kwh, 1)} kWh</span></div>`
-        + (fc.low !== undefined
-          ? `<div class="row">likely range<span class="num">${fmt(fc.low, 1)}–${fmt(fc.high, 1)} kWh</span></div>` : '')
-        + `<div class="row">typical miss<span class="num">±${fmt(fc.band_kwh ?? fc.mae_kwh, 1)} kWh</span></div>`
-        + `<div class="row">array fit<span class="num">r² ${fmt(fc.r2, 2)}, ${fc.days} days</span></div>`
-        + (fc.temp_pct_per_c && fc.temp_max_c !== null && fc.temp_max_c !== undefined
-          ? `<div class="row">heat<span class="num">${fmt(fc.temp_max_c, 0)}°C high, `
-            + `${fmt(fc.temp_pct_per_c, 2)}%/°C</span></div>` : '')
-        + '<div style="color:var(--text-muted);margin-top:3px">today\'s forecast sunshine times '
-        + 'this array\'s own measured yield, spread across the day by '
-        + (plan.useHourly ? 'the hourly cloud forecast' : "the sun's elevation") + '. '
-        + (fc.calibrated
-          ? 'The sunshine forecast runs slightly optimistic here, so it is scaled back by a '
-            + 'factor learned from past forecasts, and panels lose efficiency as they heat, '
-            + 'so the day\'s forecast high derates it too. The miss quoted is what this '
-            + 'prediction actually achieves, not the array fit\'s residual, which assumes '
-            + 'the weather was known.'
-          : 'Not yet calibrated against past forecasts, so the range is the array fit\'s '
-            + 'residual and is optimistic.')
-        + '</div>' });
+    /* The forecast is computed but no longer drawn. It was a second dashed
+       curve and a second label for a quantity the reader cannot act on: the
+       morning's guess, which the projection supersedes the moment any of the
+       day is measured. One line, one number. The calculation stays because the
+       projection is built from it - the sunshine still to come is forecast -
+       and because the journal scores it whether or not it is on screen. */
 
     /* 2. where the day is now heading: measured so far, plus the sunshine still
        to come. The band opens from the current point rather than from the
@@ -1398,14 +1372,12 @@ function renderHero(intraday, live) {
 
       const left = fc.kwh * (1 - plan.elapsed);
       const remain = band * (1 - plan.elapsed);
-      const diff = plan.nowcast - fc.kwh;
       labels.push({ y: Yb(plan.nowcast), text: `≈${fmt(plan.nowcast, 0)} projected`,
         tip: '<b>Projected total</b>'
           + `<div class="row">banked so far<span class="num">${fmt(plan.actual, 1)} kWh</span></div>`
           + `<div class="row">still to come<span class="num">${fmt(left, 1)} kWh</span></div>`
           + `<div class="row">projected<span class="num">${fmt(plan.nowcast, 1)} kWh</span></div>`
           + `<div class="row">remaining error<span class="num">±${fmt(remain, 1)} kWh</span></div>`
-          + `<div class="row">vs forecast<span class="num">${diff >= 0 ? '+' : ''}${fmt(diff, 1)} kWh</span></div>`
           + '<div style="color:var(--text-muted);margin-top:3px">'
           + (plan.elapsed < 0.005
             ? "Today's sunshine has barely started, so this is still the forecast — nothing "
