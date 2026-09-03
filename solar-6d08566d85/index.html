@@ -3792,8 +3792,21 @@ function renderHealth(history) {
       const y = Y(v);
       svg.appendChild(el('line', { x1: x0, x2: x1, y1: y, y2: y,
         stroke: css('--cons'), 'stroke-width': 2, opacity: 0.85 }));
-      text(svg, (x0 + x1) / 2, y - 6, `${fmt(v * 100, 1)}%`,
-        { 'text-anchor': 'middle', 'font-size': 10, fill: css('--cons') });
+      // The label takes whichever side of its step the data leaves clearer
+      // near the middle of the span, and wears a page-colour halo so a
+      // series crossing it stays behind the digits either way.
+      const midX = (x0 + x1) / 2;
+      const near = idxs.filter(i => Math.abs(pts[i][0] - midX) < 46);
+      const zoneClear = (lo, hi) => near.length
+        ? Math.min(...near.map(i => {
+            const py = pts[i][1];
+            return py < lo ? lo - py : py > hi ? py - hi : 0;
+          }))
+        : 99;
+      const ly = zoneClear(y - 16, y - 2) >= zoneClear(y + 4, y + 18) ? y - 6 : y + 14;
+      text(svg, midX, ly, `${fmt(v * 100, 1)}%`,
+        { 'text-anchor': 'middle', 'font-size': 10, fill: css('--cons'),
+          stroke: css('--page'), 'stroke-width': 3.5, 'paint-order': 'stroke' });
     }
     const dense = series.length > 18;
 
