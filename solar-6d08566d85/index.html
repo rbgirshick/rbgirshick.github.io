@@ -2419,8 +2419,16 @@ function renderCumulative(history) {
     return Math.round((Date.UTC(+d.date.slice(0, 4), +d.date.slice(5, 7) - 1, +d.date.slice(8, 10))
       - Date.UTC(y, 0, 1)) / 86400000);
   };
-  const partial = allYears.filter(y => firstDoy(y) > START_SLACK_DAYS);
-  let years = allYears.filter(y => firstDoy(y) <= START_SLACK_DAYS);
+  /* The pre-collection era has no days at all, but it has whole months -
+     twelve of them, app-recorded or fully metered - and a cumulative curve
+     through month ends is a perfectly fair comparison at this scale. Such
+     years draw dashed, and the subtitle says where they came from. */
+  const monthsByYear = {};
+  for (const m of history.months || []) (monthsByYear[+m.month.slice(0, 4)] ||= []).push(m);
+  const wholeByMonths = y => firstDoy(y) > START_SLACK_DAYS
+    && (monthsByYear[y] || []).filter(m => m.src === 'app' || m.days >= 27).length === 12;
+  const partial = allYears.filter(y => firstDoy(y) > START_SLACK_DAYS && !wholeByMonths(y));
+  let years = allYears.filter(y => firstDoy(y) <= START_SLACK_DAYS || wholeByMonths(y));
 
   // Nothing whole yet: show the newest year anyway rather than an empty card,
   // and say plainly that it is not a comparison.
@@ -2452,11 +2460,14 @@ function renderCumulative(history) {
     ? ` — ${partial.join(', ')} left out, ${partial.length === 1 ? 'its records begin' : 'their records begin'} `
       + `${(byYear[partial[0]] || [{}])[0].date || 'mid-year'}, so ${partial.length === 1 ? 'it is' : 'they are'} not comparable`
     : '';
+  const appYears = chosen.filter(y => firstDoy(y) > START_SLACK_DAYS);
+  const appNote = appYears.length
+    ? ` — ${appYears.join(', ')} dashed: month-resolution, from the mySunPower app` : '';
   $('ytd-sub').textContent = noneWhole
     ? `${allYears[allYears.length - 1]} so far — records begin mid-year, so there is nothing to compare against yet`
     : (chosen.length > 1
-      ? `accumulated from January 1 — ${chosen.length} years overlaid, older years fainter${dropped}`
-      : `${newest} accumulated from January 1${dropped}`);
+      ? `accumulated from January 1 — ${chosen.length} years overlaid, older years fainter${appNote}${dropped}`
+      : `${newest} accumulated from January 1${appNote}${dropped}`);
 
   const W = chartW(svg);
   const narrow = W < 560;
@@ -2470,16 +2481,26 @@ function renderCumulative(history) {
   };
   const X = doy => padL + doy / 365 * (W - padL - padR);
 
+  const monthEndDoy = m =>
+    Math.round((Date.UTC(2001, m + 1, 0) - Date.UTC(2001, 0, 1)) / 86400000);
   const curves = [];
   for (const metric of METRICS) {
     chosen.forEach((y, yi) => {
+      const fromMonths = firstDoy(y) > START_SLACK_DAYS;
       let acc = 0;
-      const pts = (byYear[y] || []).map(d => {
-        acc += d[metric.key] || 0;
-        return [dayOfYear(d.date), +acc.toFixed(1)];
-      });
-      if (pts.length) {
-        curves.push({ year: y, metric, pts,
+      const pts = fromMonths
+        ? [[0, 0], ...(monthsByYear[y] || [])
+            .slice().sort((a, b) => a.month < b.month ? -1 : 1)
+            .map(m => {
+              acc += m[metric.key] || 0;
+              return [monthEndDoy(+m.month.slice(5) - 1), +acc.toFixed(1)];
+            })]
+        : (byYear[y] || []).map(d => {
+            acc += d[metric.key] || 0;
+            return [dayOfYear(d.date), +acc.toFixed(1)];
+          });
+      if (pts.length > 1 || (!fromMonths && pts.length)) {
+        curves.push({ year: y, metric, pts, dashed: fromMonths,
           color: yearShade(metric.color(), yi, chosen.length),
           newest: yi === chosen.length - 1 });
       }
@@ -2521,6 +2542,7 @@ function renderCumulative(history) {
     svg.appendChild(el('path', {
       d: c.pts.map((p, k) => `${k ? 'L' : 'M'} ${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' '),
       fill: 'none', stroke: c.color, 'stroke-width': c.newest ? 2.3 : 1.4,
+      'stroke-dasharray': c.dashed ? '6 4' : 'none',
       'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
   }
 
