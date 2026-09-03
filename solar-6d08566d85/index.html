@@ -841,8 +841,9 @@ footer.colophon {
         below is noise; <b>two or three in a row below the band is a signal</b> — soiling, snow,
         shade that has grown, or a string offline. A jump back up usually means rain or a wash.</p>
         <p><b>What it will not tell you.</b> Panel ageing runs about 0.5% a year, far below the
-        monthly scatter, so this cannot show gradual decline for a year or two yet. It is a fault
-        detector, not a degradation meter — and an alert fires if two complete months fall below
+        monthly scatter, so a single month says nothing about slow ageing. With the app-recorded
+        months folded in the series reaches back to 2022 — long enough that a fitted
+        trend (under the chart) means something. It is still first a fault detector — and an alert fires if two complete months fall below
         90%.</p>
       </div>
       </details>
@@ -2425,8 +2426,22 @@ function renderCumulative(history) {
      years draw dashed, and the subtitle says where they came from. */
   const monthsByYear = {};
   for (const m of history.months || []) (monthsByYear[+m.month.slice(0, 4)] ||= []).push(m);
-  const wholeByMonths = y => firstDoy(y) > START_SLACK_DAYS
-    && (monthsByYear[y] || []).filter(m => m.src === 'app' || m.days >= 27).length === 12;
+  const daysInMonth = (y, mon) => new Date(Date.UTC(y, mon + 1, 0)).getUTCDate();
+  const monthWhole = m => m.src === 'app' || m.days >= 27;
+  /* One part-metered month per year is allowed and interpolated: 2025's
+     October is whole on neither instrument (collection began the 17th), so
+     its missing days fill at a rate blended from September and from
+     October's own metered days. */
+  const monthCurveYear = y => {
+    if (firstDoy(y) <= START_SLACK_DAYS) return null;
+    const ms = (monthsByYear[y] || []).slice().sort((a, b) => a.month < b.month ? -1 : 1);
+    if (ms.length !== 12) return null;
+    const partial = ms.filter(m => !monthWhole(m));
+    if (partial.length > 1) return null;
+    if (partial.length && (!partial[0].days || ms.indexOf(partial[0]) === 0)) return null;
+    return { ms, patched: partial[0] || null };
+  };
+  const wholeByMonths = y => !!monthCurveYear(y);
   const partial = allYears.filter(y => firstDoy(y) > START_SLACK_DAYS && !wholeByMonths(y));
   let years = allYears.filter(y => firstDoy(y) <= START_SLACK_DAYS || wholeByMonths(y));
 
@@ -2461,8 +2476,12 @@ function renderCumulative(history) {
       + `${(byYear[partial[0]] || [{}])[0].date || 'mid-year'}, so ${partial.length === 1 ? 'it is' : 'they are'} not comparable`
     : '';
   const appYears = chosen.filter(y => firstDoy(y) > START_SLACK_DAYS);
+  const patchedYears = appYears.filter(y => (monthCurveYear(y) || {}).patched);
   const appNote = appYears.length
-    ? ` — ${appYears.join(', ')} dashed: month-resolution, from the mySunPower app` : '';
+    ? ` — ${appYears.join(', ')} dashed: month-resolution (app-recorded and metered months)`
+      + (patchedYears.length
+        ? `; ${patchedYears.join(', ')} has one part-metered month interpolated` : '')
+    : '';
   $('ytd-sub').textContent = noneWhole
     ? `${allYears[allYears.length - 1]} so far — records begin mid-year, so there is nothing to compare against yet`
     : (chosen.length > 1
@@ -2486,21 +2505,27 @@ function renderCumulative(history) {
   const curves = [];
   for (const metric of METRICS) {
     chosen.forEach((y, yi) => {
-      const fromMonths = firstDoy(y) > START_SLACK_DAYS;
+      const mc = monthCurveYear(y);
       let acc = 0;
-      const pts = fromMonths
-        ? [[0, 0], ...(monthsByYear[y] || [])
-            .slice().sort((a, b) => a.month < b.month ? -1 : 1)
-            .map(m => {
-              acc += m[metric.key] || 0;
-              return [monthEndDoy(+m.month.slice(5) - 1), +acc.toFixed(1)];
-            })]
+      const pts = mc
+        ? [[0, 0], ...mc.ms.map((m, mi) => {
+            let v = m[metric.key] || 0;
+            if (m === mc.patched) {
+              const mon = +m.month.slice(5) - 1;
+              const miss = daysInMonth(y, mon) - m.days;
+              const own = v / m.days;
+              const prevRate = (mc.ms[mi - 1][metric.key] || 0) / daysInMonth(y, mon - 1);
+              v += miss * (own + prevRate) / 2;
+            }
+            acc += v;
+            return [monthEndDoy(+m.month.slice(5) - 1), +acc.toFixed(1)];
+          })]
         : (byYear[y] || []).map(d => {
             acc += d[metric.key] || 0;
             return [dayOfYear(d.date), +acc.toFixed(1)];
           });
-      if (pts.length > 1 || (!fromMonths && pts.length)) {
-        curves.push({ year: y, metric, pts, dashed: fromMonths,
+      if (pts.length > 1 || (!mc && pts.length)) {
+        curves.push({ year: y, metric, pts, dashed: !!mc,
           color: yearShade(metric.color(), yi, chosen.length),
           newest: yi === chosen.length - 1 });
       }
@@ -2597,9 +2622,15 @@ function renderCumulative(history) {
     const when = new Date(Date.UTC(2001, 0, 1) + doy * 86400000);
     let html = `<b>${MONTHS[when.getUTCMonth()]} ${when.getUTCDate()}</b>`;
     const at = c => {
-      let best = null;
-      for (const p of c.pts) { if (p[0] <= doy) best = p; else break; }
-      return best;
+      const pts = c.pts;
+      if (!pts.length) return null;
+      if (doy <= pts[0][0]) return pts[0];
+      const last = pts[pts.length - 1];
+      if (doy >= last[0]) return last;
+      let k = 1;
+      while (pts[k][0] < doy) k++;
+      const [x0, v0] = pts[k - 1], [x1, v1] = pts[k];
+      return [doy, +(v0 + (v1 - v0) * (doy - x0) / (x1 - x0)).toFixed(1)];
     };
     curves.forEach((c, i) => {          // dots follow draw order, so indexes line up
       const best = at(c);
@@ -3680,7 +3711,8 @@ function renderHealth(history) {
     const b = h.baseline || {};
     $('health-sub').textContent =
       `each month against the array as it was in ${b.from ? b.from.slice(0, 7) : 'the baseline'}`
-      + `–${b.to ? b.to.slice(0, 7) : ''} · 100% means unchanged`;
+      + `–${b.to ? b.to.slice(0, 7) : ''} · 100% means unchanged`
+      + (series.some(p => p.src) ? ' · dashed span: app-recorded months' : '');
 
     const W = chartW(svg), narrow = W < 560;
     const H = narrow ? 210 : 220;
@@ -3716,20 +3748,27 @@ function renderHealth(history) {
     text(svg, padL + 2, top - 6, 'percent of baseline', { 'text-anchor': 'start' });
 
     const pts = series.map((p, i) => [X(i), Y(p.index)]);
-    svg.appendChild(el('path', {
-      d: pts.map((q, i) => `${i ? 'L' : 'M'} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join(' '),
-      fill: 'none', stroke: css('--prod'), 'stroke-width': 2,
+    const firstMeasured = series.findIndex(p => !p.src);
+    const seg = (arr, dashed) => arr.length > 1 && svg.appendChild(el('path', {
+      d: arr.map((q, i) => `${i ? 'L' : 'M'} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join(' '),
+      fill: 'none', stroke: css('--prod'), 'stroke-width': dashed ? 1.6 : 2,
+      'stroke-dasharray': dashed ? '5 4' : 'none',
       'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    if (firstMeasured < 0) seg(pts, true);
+    else { if (firstMeasured > 0) seg(pts.slice(0, firstMeasured + 1), true); seg(pts.slice(firstMeasured), false); }
+    const dense = series.length > 18;
 
     const tip = $('health-tip');
     series.forEach((p, i) => {
       const [x, y] = pts[i];
-      const dot = el('circle', { cx: x, cy: y, r: 4.5, fill: css('--surface-1'),
-        stroke: css('--prod'), 'stroke-width': 2 });
+      const dot = el('circle', { cx: x, cy: y, r: dense ? 2.6 : 4.5,
+        fill: css('--surface-1'), stroke: p.src ? css('--amber-250') : css('--prod'),
+        'stroke-width': dense ? 1.6 : 2 });
       svg.appendChild(dot);
-      if (!narrow || i % 2 === 0) {
-        text(svg, x, bot + 18, MONTHS[+p.month.slice(5) - 1], { 'text-anchor': 'middle' });
-        text(svg, x, bot + 30, p.month.slice(2, 4), { 'text-anchor': 'middle',
+      if (dense ? (p.month.slice(5) === '01' || series.length === i + 1) : (!narrow || i % 2 === 0)) {
+        text(svg, x, bot + 18, dense ? p.month.slice(0, 4) : MONTHS[+p.month.slice(5) - 1],
+          { 'text-anchor': 'middle' });
+        if (!dense) text(svg, x, bot + 30, p.month.slice(2, 4), { 'text-anchor': 'middle',
           fill: css('--text-muted') });
       }
       const hit = el('circle', { cx: x, cy: y, r: 14, fill: 'transparent' });
@@ -3742,6 +3781,8 @@ function renderHealth(history) {
           + `<div class="row">so<span class="num">${fmt(p.actual_kwh, 0)} / ${fmt(p.expected_kwh, 0)}`
           + ` = ${fmt(p.index * 100, 1)}%</span></div>`
           + `<div class="row">days counted<span class="num">${p.days}</span></div>`
+          + (p.src === 'app'
+            ? '<div class="row">source<span class="num">mySunPower app</span></div>' : '')
           + '<div style="color:var(--text-muted);margin-top:3px">weather and temperature are '
           + 'already divided out, so this is the array, not the month</div>';
         tip.style.opacity = 1;
@@ -3758,7 +3799,12 @@ function renderHealth(history) {
       `Latest complete month ${fmt(last.index * 100, 0)}% of baseline`
       + (runs >= 2
         ? ` — ${runs} of the last 3 months sit below the band, which is worth investigating.`
-        : `, inside the band. Nothing to act on.`);
+        : `, inside the band. Nothing to act on.`)
+      + (h.trend
+        ? ` Long-run trend across ${h.trend.months} months: `
+          + `${h.trend.pct_per_year > 0 ? '+' : ''}${fmt(h.trend.pct_per_year, 1)}`
+          + ` ± ${fmt(h.trend.stderr_pct, 1)}%/year.`
+        : '');
   }
 
   // --- the utility meter -------------------------------------------------
