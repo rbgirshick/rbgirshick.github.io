@@ -2219,9 +2219,12 @@ function renderMonthly(history) {
 
   const PROD = css('--prod'), CONS = css('--cons'), IMP = css('--imp'), EXP = css('--exp');
   legendInto('monthly-legend', [['Production', PROD], ['Consumption', CONS]]);
-  $('monthly-sub').textContent = multi
+  const hasApp = Object.values(shown).some(m => m.src === 'app');
+  $('monthly-sub').textContent = (multi
     ? `${year} — whole-month totals, outage catch-up rows folded in`
-    : 'Whole-month totals — outage catch-up rows are folded in.';
+    : 'Whole-month totals — outage catch-up rows are folded in.')
+    + (hasApp ? ' Months before Oct 2025 were recorded by the mySunPower app'
+      + ' (net grid ~2% solar-optimistic against the utility meter).' : '');
 
   const W = chartW(svg);
   const narrow = W < 560;
@@ -2358,7 +2361,9 @@ function renderMonthly(history) {
         html += row('Production', PROD, m.pv_kwh)
           + row('Consumption', CONS, m.consumption_kwh)
           + row('Net grid', m.net_kwh >= 0 ? IMP : EXP, m.net_kwh)
-          + `<div class="row">metered days<span class="num">${m.days}</span></div>`;
+          + (m.src === 'app'
+            ? '<div class="row">source<span class="num">mySunPower app</span></div>'
+            : `<div class="row">metered days<span class="num">${m.days}</span></div>`);
       } else {
         html += '<div class="row">no data this month</div>';
       }
@@ -2386,7 +2391,8 @@ function renderMonthly(history) {
     ['Month', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Metered days'],
     (history.months || []).slice().reverse().map(m => [m.month, fmt(m.pv_kwh, 0),
       fmt(m.consumption_kwh, 0),
-      { v: fmt(m.net_kwh, 0), cls: m.net_kwh < 0 ? 'exp' : '' }, m.days]));
+      { v: fmt(m.net_kwh, 0), cls: m.net_kwh < 0 ? 'exp' : '' },
+      m.src === 'app' ? { v: 'app', cls: 'est' } : m.days]));
 }
 
 /* ---------- cumulative, year against year ------------------------------- */
@@ -3734,7 +3740,7 @@ function renderHealth(history) {
   }
 
   // --- the utility meter -------------------------------------------------
-  const bills = (h.bills || []).filter(b => b.days > 0);
+  const bills = (h.bills || []).filter(b => b.days > 0 || b.app_days > 0);
   if (!bills.length) {
     $('bills-note').textContent = '';
     clear($('bills-table'));
@@ -3744,7 +3750,9 @@ function renderHealth(history) {
     ['Billing period', 'Utility (kWh)', 'This system (kWh)', 'Difference', 'Coverage'],
     bills.slice().reverse().map(b => {
       const complete = !b.missing;
-      const cover = `${b.days}d` + (b.estimated ? ` · ${b.estimated} est` : '')
+      const cover = (b.days ? `${b.days}d` : '')
+        + (b.estimated ? ` · ${b.estimated} est` : '')
+        + (b.app_days ? `${b.days ? ' · ' : ''}${b.app_days}d app history` : '')
         + (b.missing ? ` · ${b.missing} missing` : '');
       return [
         `${b.start} → ${b.end}`,
@@ -3756,14 +3764,18 @@ function renderHealth(history) {
         { v: cover, cls: complete ? '' : 'alert' },
       ];
     }));
-  const complete = bills.filter(b => !b.missing && !b.estimated);
+  const complete = bills.filter(b => !b.missing && !b.estimated && !b.app_days);
   const worst = complete.length
     ? Math.max(...complete.map(b => Math.abs(b.diff_pct_of_flow || 0))) : null;
   $('bills-note').textContent = worst === null
     ? 'No billing period is yet covered by complete measured data.'
     : `Across fully measured periods the two agree to within ${fmt(worst, 1)}% — close enough `
       + `that the reconstruction is confirmed, and the residual is what you would expect between `
-      + `monitoring-grade CTs and a revenue meter rather than an error in the arithmetic.`;
+      + `monitoring-grade CTs and a revenue meter rather than an error in the arithmetic.`
+      + (bills.some(b => b.app_days)
+        ? ' Periods before collection began are checked against the mySunPower app\u2019s'
+          + ' monthly history instead, pro-rated by days.'
+        : '');
 }
 
 function renderRecords(history, live) {
