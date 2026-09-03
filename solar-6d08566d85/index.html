@@ -3718,7 +3718,8 @@ function renderHealth(history) {
         ? `each month against the array's best documented year — 100% = the ${b.ref_year} array`
         : `each month against the array as it was in ${b.from ? b.from.slice(0, 7) : 'the baseline'}`
           + `–${b.to ? b.to.slice(0, 7) : ''} · 100% means unchanged`)
-      + (series.some(p => p.src) ? ' · dashed span: app-recorded months' : '');
+      + (series.some(p => p.src) ? ' · dashed span: app-recorded months' : '')
+      + ' · blue steps: yearly means, season-balanced';
 
     const W = chartW(svg), narrow = W < 560;
     const H = narrow ? 210 : 220;
@@ -3762,6 +3763,38 @@ function renderHealth(history) {
       'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
     if (firstMeasured < 0) seg(pts, true);
     else { if (firstMeasured > 0) seg(pts.slice(0, firstMeasured + 1), true); seg(pts.slice(firstMeasured), false); }
+
+    /* Year steps: where each year sits on average. A plain mean would lie for
+       part-years - 2026 lacks its low-reading winter tail, 2022 its January -
+       so each year is a season-balanced mean: its months' residuals against
+       the all-years calendar-month profile, plus the full-year level. For a
+       complete year that IS the plain mean; for a part-year it is what the
+       mean would have been with the missing season mix restored. */
+    const calSum = {}, calN = {};
+    for (const p of series) {
+      const m = p.month.slice(5);
+      calSum[m] = (calSum[m] || 0) + p.index; calN[m] = (calN[m] || 0) + 1;
+    }
+    const calMean = {};
+    let calL = 0, calK = 0;
+    for (const m in calSum) { calMean[m] = calSum[m] / calN[m]; calL += calMean[m]; calK++; }
+    calL /= calK;
+    const byYr = {};
+    series.forEach((p, i) => (byYr[p.month.slice(0, 4)] ||= []).push(i));
+    for (const yr of Object.keys(byYr).sort()) {
+      const idxs = byYr[yr];
+      if (idxs.length < 3) continue;
+      const v = idxs.reduce((a, i) => a + series[i].index - calMean[series[i].month.slice(5)], 0)
+        / idxs.length + calL;
+      const half = pts.length > 1 ? (W - padL - padR) / (pts.length - 1) / 2 : 8;
+      const x0 = Math.max(padL, pts[idxs[0]][0] - half);
+      const x1 = Math.min(W - padR, pts[idxs[idxs.length - 1]][0] + half);
+      const y = Y(v);
+      svg.appendChild(el('line', { x1: x0, x2: x1, y1: y, y2: y,
+        stroke: css('--cons'), 'stroke-width': 2, opacity: 0.85 }));
+      text(svg, (x0 + x1) / 2, y - 6, `${fmt(v * 100, 1)}%`,
+        { 'text-anchor': 'middle', 'font-size': 10, fill: css('--cons') });
+    }
     const dense = series.length > 18;
 
     const tip = $('health-tip');
