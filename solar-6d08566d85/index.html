@@ -840,8 +840,9 @@ footer.colophon {
         month-to-month scatter around the 2023 level. A month inside it is indistinguishable
         from the 2023 array; a sustained drift below is the array changing — soiling, shade
         that has grown, a module fading, ordinary ageing. A jump back up usually means rain
-        or a wash. The winter months always read a few points low under every baseline —
-        that is the site's low-sun geometry, not the panels.</p>
+        or a wash. The model includes an airmass term for the site's low-sun incidence
+        losses, so winter months are judged against winter physics rather than reading
+        low by default.</p>
         <p><b>What a single month will not tell you.</b> Panel ageing runs about 0.5% a year,
         far below the monthly scatter, so no one point here says anything about slow decline —
         the fitted trend under the chart, drawn from the whole 2022-onward series, is the
@@ -3693,7 +3694,9 @@ function soundRecordDays(history) {
    the panels. Instead a baseline is frozen to the reference year - 2023, the
    array's best documented health, fitted at month resolution from the app era -
    and every month scored against it: actual production over what that array
-   would have produced in the same sunshine and temperature. Weather divides
+   would have produced in the same sunshine, temperature and sun angle (an
+   airmass term carries the low-sun incidence losses, so winter months are
+   judged fairly rather than reading low). Weather divides
    out, and the level reads directly as percent of the healthy array. (Without
    an era the payload falls back to a first-120-days baseline; alerting always
    fits its own recent one.)
