@@ -3777,26 +3777,47 @@ function renderHealth(history) {
         if (!dense) text(svg, x, bot + 30, p.month.slice(2, 4), { 'text-anchor': 'middle',
           fill: css('--text-muted') });
       }
-      const hit = el('circle', { cx: x, cy: y, r: 14, fill: 'transparent' });
-      hit.addEventListener('mouseenter', () => {
-        const box = svg.getBoundingClientRect();
-        tip.innerHTML = `<b>${MONTHS[+p.month.slice(5) - 1]} ${p.month.slice(0, 4)}</b>`
-          + `<div class="row">output<span class="num">${fmt(p.index * 100, 1)}% of baseline</span></div>`
-          + `<div class="row">produced<span class="num">${fmt(p.actual_kwh, 0)} kWh</span></div>`
-          + `<div class="row">baseline would give<span class="num">${fmt(p.expected_kwh, 0)} kWh</span></div>`
-          + `<div class="row">so<span class="num">${fmt(p.actual_kwh, 0)} / ${fmt(p.expected_kwh, 0)}`
-          + ` = ${fmt(p.index * 100, 1)}%</span></div>`
-          + `<div class="row">days counted<span class="num">${p.days}</span></div>`
-          + (p.src === 'app'
-            ? '<div class="row">source<span class="num">mySunPower app</span></div>' : '')
-          + '<div style="color:var(--text-muted);margin-top:3px">weather and temperature are '
-          + 'already divided out, so this is the array, not the month</div>';
-        tip.style.opacity = 1;
-        tip.style.left = `${x / W * box.width}px`;
-        tip.style.top = `${y / H * box.height}px`;
-      });
-      hit.addEventListener('mouseleave', () => tip.style.opacity = 0);
-      svg.appendChild(hit);
+    });
+
+    // crosshair: one reading anywhere along the plot, not 54 tiny hover targets
+    const against = b.ref_year ? `% of the ${b.ref_year} array` : '% of baseline';
+    const hair = el('line', { y1: top, y2: bot, stroke: css('--axis'),
+      'stroke-width': 1, opacity: 0 });
+    svg.appendChild(hair);
+    const ring = el('circle', { r: 5.5, fill: 'none', 'stroke-width': 2.2, opacity: 0 });
+    svg.appendChild(ring);
+    const hit = el('rect', { x: padL, y: top, width: W - padL - padR, height: bot - top,
+      fill: 'transparent', style: 'cursor:crosshair' });
+    svg.appendChild(hit);
+    const move = ev => {
+      const box = svg.getBoundingClientRect();
+      const px = (ev.clientX - box.left) / box.width * W;
+      const i = Math.max(0, Math.min(series.length - 1,
+        Math.round((px - padL) / (W - padL - padR) * (series.length - 1))));
+      const p = series[i], [x, y] = pts[i];
+      hair.setAttribute('x1', x); hair.setAttribute('x2', x); hair.setAttribute('opacity', 1);
+      ring.setAttribute('cx', x); ring.setAttribute('cy', y);
+      ring.setAttribute('stroke', p.src ? css('--amber-250') : css('--prod'));
+      ring.setAttribute('opacity', 1);
+      tip.innerHTML = `<b>${MONTHS[+p.month.slice(5) - 1]} ${p.month.slice(0, 4)}</b>`
+        + `<div class="row">output<span class="num">${fmt(p.index * 100, 1)}${against}</span></div>`
+        + `<div class="row">produced<span class="num">${fmt(p.actual_kwh, 0)} kWh</span></div>`
+        + `<div class="row">${b.ref_year ? b.ref_year + ' array' : 'baseline'} would give<span class="num">${fmt(p.expected_kwh, 0)} kWh</span></div>`
+        + `<div class="row">so<span class="num">${fmt(p.actual_kwh, 0)} / ${fmt(p.expected_kwh, 0)}`
+        + ` = ${fmt(p.index * 100, 1)}%</span></div>`
+        + `<div class="row">days counted<span class="num">${p.days}</span></div>`
+        + (p.src === 'app'
+          ? '<div class="row">source<span class="num">mySunPower app</span></div>' : '')
+        + '<div style="color:var(--text-muted);margin-top:3px">weather and temperature are '
+        + 'already divided out, so this is the array, not the month</div>';
+      tip.style.opacity = 1;
+      tip.style.left = `${x / W * box.width}px`;
+      tip.style.top = `${y / H * box.height}px`;
+    };
+    hit.addEventListener('mousemove', move);
+    hit.addEventListener('touchmove', e => { move(e.touches[0]); e.preventDefault(); }, { passive: false });
+    hit.addEventListener('mouseleave', () => {
+      tip.style.opacity = 0; hair.setAttribute('opacity', 0); ring.setAttribute('opacity', 0);
     });
 
     const last = series[series.length - 1];
