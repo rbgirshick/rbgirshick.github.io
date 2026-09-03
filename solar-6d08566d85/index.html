@@ -823,8 +823,8 @@ footer.colophon {
       <details class="explainer">
         <summary>what this plot is, and how to read it</summary>
       <div class="explain">
-        <b>The vertical axis is one month's output as a percentage of what this same array would
-        have produced in the same weather when the record began.</b> Both sides of that division
+        <b>The vertical axis is one month's output as a percentage of what this same array
+        produced in the same weather during 2023 — its best documented year.</b> Both sides of that division
         are kWh, so the percentage has no units of its own — it is a comparison, not a quantity:
         <span class="formula">this month &nbsp;=&nbsp; <b>612 kWh</b> actually produced<br>
           baseline &nbsp;&nbsp;&nbsp;=&nbsp; <b>606 kWh</b> the array would have made in the same
@@ -834,17 +834,20 @@ footer.colophon {
           <i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
           the kWh cancel, which is why the axis is a percentage</i></span>
         Because the same weather appears on both sides, a dull month does not count against the
-        panels — only the array itself can move this number. <b>100% means nothing has
-        changed</b>; below means the array is producing less than it used to for the same sun.
+        panels — only the array itself can move this number. <b>100% means as good as the 2023
+        array</b>; below means less output than that array would have managed in the same sun.
         <p><b>How to read it.</b> The shaded band is one standard deviation of this site's own
-        month-to-month scatter. Inside it, a month is indistinguishable from normal. One point
-        below is noise; <b>two or three in a row below the band is a signal</b> — soiling, snow,
-        shade that has grown, or a string offline. A jump back up usually means rain or a wash.</p>
-        <p><b>What it will not tell you.</b> Panel ageing runs about 0.5% a year, far below the
-        monthly scatter, so a single month says nothing about slow ageing. With the app-recorded
-        months folded in the series reaches back to 2022 — long enough that a fitted
-        trend (under the chart) means something. It is still first a fault detector — and an alert fires if two complete months fall below
-        90%.</p>
+        month-to-month scatter around the 2023 level. A month inside it is indistinguishable
+        from the 2023 array; a sustained drift below is the array changing — soiling, shade
+        that has grown, a module fading, ordinary ageing. A jump back up usually means rain
+        or a wash. The winter months always read a few points low under every baseline —
+        that is the site's low-sun geometry, not the panels.</p>
+        <p><b>What a single month will not tell you.</b> Panel ageing runs about 0.5% a year,
+        far below the monthly scatter, so no one point here says anything about slow decline —
+        the fitted trend under the chart, drawn from the whole 2022-onward series, is the
+        long-run statement. Sudden faults are a different question with a different yardstick:
+        the alerting job fits its own baseline from recent months, so a pager asks "worse than
+        recently?" while this chart asks "worse than 2023?".</p>
       </div>
       </details>
       <div class="chart-box">
@@ -3687,12 +3690,13 @@ function soundRecordDays(history) {
    How is the array doing compared with how it used to? Not from the fitted
    coefficient - that is refit daily, so it absorbs the very decline it would
    have to reveal, and read as a series it is dominated by season rather than by
-   the panels. Instead a baseline model is frozen from the first 120 sound days
-   and each month scored against it: actual production over what that baseline
-   says the month's real sunshine and temperature should have produced. Weather
-   divides out. The index sits at 1.00 with a standard deviation of 0.06, which
-   is too coarse to see slow ageing and quite sharp enough to see a string drop
-   out, snow lie, or a wash take effect.
+   the panels. Instead a baseline is frozen to the reference year - 2023, the
+   array's best documented health, fitted at month resolution from the app era -
+   and every month scored against it: actual production over what that array
+   would have produced in the same sunshine and temperature. Weather divides
+   out, and the level reads directly as percent of the healthy array. (Without
+   an era the payload falls back to a first-120-days baseline; alerting always
+   fits its own recent one.)
 
    And does the utility meter agree with us? Every consumption and net-grid
    figure passes through the CT correction; the meter is the one instrument in
@@ -3710,8 +3714,10 @@ function renderHealth(history) {
   } else {
     const b = h.baseline || {};
     $('health-sub').textContent =
-      `each month against the array as it was in ${b.from ? b.from.slice(0, 7) : 'the baseline'}`
-      + `–${b.to ? b.to.slice(0, 7) : ''} · 100% means unchanged`
+      (b.ref_year
+        ? `each month against the array's best documented year — 100% = the ${b.ref_year} array`
+        : `each month against the array as it was in ${b.from ? b.from.slice(0, 7) : 'the baseline'}`
+          + `–${b.to ? b.to.slice(0, 7) : ''} · 100% means unchanged`)
       + (series.some(p => p.src) ? ' · dashed span: app-recorded months' : '');
 
     const W = chartW(svg), narrow = W < 560;
@@ -3795,16 +3801,20 @@ function renderHealth(history) {
 
     const last = series[series.length - 1];
     const runs = series.slice(-3).filter(p => p.index < 1 - SD).length;
-    $('health-note').textContent =
-      `Latest complete month ${fmt(last.index * 100, 0)}% of baseline`
-      + (runs >= 2
-        ? ` — ${runs} of the last 3 months sit below the band, which is worth investigating.`
-        : `, inside the band. Nothing to act on.`)
-      + (h.trend
-        ? ` Long-run trend across ${h.trend.months} months: `
-          + `${h.trend.pct_per_year > 0 ? '+' : ''}${fmt(h.trend.pct_per_year, 1)}`
-          + ` ± ${fmt(h.trend.stderr_pct, 1)}%/year.`
-        : '');
+    const trendTxt = h.trend
+      ? ` Long-run trend across ${h.trend.months} months: `
+        + `${h.trend.pct_per_year > 0 ? '+' : ''}${fmt(h.trend.pct_per_year, 1)}`
+        + ` ± ${fmt(h.trend.stderr_pct, 1)}%/year.`
+      : '';
+    $('health-note').textContent = b.ref_year
+      ? `Latest complete month: ${fmt(last.index * 100, 0)}% of the ${b.ref_year} array.`
+        + trendTxt
+        + ' Sudden-fault alerts compare against a recent baseline, not this one.'
+      : `Latest complete month ${fmt(last.index * 100, 0)}% of baseline`
+        + (runs >= 2
+          ? ` — ${runs} of the last 3 months sit below the band, which is worth investigating.`
+          : `, inside the band. Nothing to act on.`)
+        + trendTxt;
   }
 
   // --- the utility meter -------------------------------------------------
