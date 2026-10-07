@@ -183,6 +183,15 @@ button.ghost {
   border: 1px solid var(--border); border-radius: 7px; padding: 5px 11px; cursor: pointer;
 }
 button.ghost:hover { background: var(--surface-1); color: var(--text-primary); }
+/* The header keeps one quiet control. Forget key, rare and destructive, lives
+   in the footer rather than beside it at the same weight. */
+button.ghost.quiet { border-color: transparent; color: var(--text-muted); }
+button.ghost.quiet:hover { color: var(--text-primary); }
+.link-btn {
+  font: inherit; color: var(--text-muted); background: none; border: 0; padding: 0;
+  margin-top: 6px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.link-btn:hover { color: var(--text-primary); }
 
 /* --- cards ------------------------------------------------------------- */
 .card {
@@ -678,8 +687,7 @@ footer.colophon {
       <span class="spacer"></span>
       <span class="updated" id="updated"></span>
       <span class="pill ok" id="status"><span class="dot"></span><span id="status-text">Live</span></span>
-      <button class="ghost" id="theme-btn" type="button" data-tip="Switch between light, dark and your system setting">Theme</button>
-      <button class="ghost" id="forget-btn" type="button" data-tip="Remove the saved key from this browser">Forget key</button>
+      <button class="ghost quiet" id="theme-btn" type="button" data-tip="Switch between light, dark and your system setting">Theme: auto</button>
     </header>
 
     <section class="card hero">
@@ -879,7 +887,8 @@ footer.colophon {
 
     <footer class="colophon">
       Read every 5 minutes by a Raspberry Pi inside the PVS6.<br>
-      Encrypted before it leaves the house. The key stays on this device.
+      Encrypted before it leaves the house. The key stays on this device.<br>
+      <button class="link-btn" id="forget-btn" type="button">Forget the key on this device</button>
     </footer>
   </div>
 </div>
@@ -4207,8 +4216,15 @@ $('theme-btn').addEventListener('click', () => {
   const next = now === 'dark' ? 'light' : now === 'light' ? '' : 'dark';
   if (next) { root.setAttribute('data-theme', next); localStorage.setItem('solar-theme', next); }
   else { root.removeAttribute('data-theme'); localStorage.removeItem('solar-theme'); }
+  themeLabel();
   if (DATA.live) renderAll();   // re-read CSS vars into the SVG marks
 });
+// The button names the current setting, so a click's effect is never a guess.
+function themeLabel() {
+  const t = document.documentElement.getAttribute('data-theme');
+  $('theme-btn').textContent = `Theme: ${t === 'dark' ? 'dark' : t === 'light' ? 'light' : 'auto'}`;
+}
+themeLabel();
 
 $('gate-retry').addEventListener('click', () => {
   $('gate-retry').classList.add('hidden');
