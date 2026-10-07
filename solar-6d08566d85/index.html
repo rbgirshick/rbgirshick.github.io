@@ -2734,7 +2734,9 @@ const PRESETS = [
   { key: 'all', label: 'All', from: () => null },
 ];
 
-let RANGE = { preset: 'today', from: null, to: null };
+// Opens on a month, not today: the card above already is today, and a single
+// bar in a chart built for many said nothing the hero had not.
+let RANGE = { preset: 'last30', from: null, to: null };
 let rangeWired = false;
 
 function rangeWindow(days) {
