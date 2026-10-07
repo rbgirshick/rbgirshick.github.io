@@ -2169,7 +2169,9 @@ function yearShade(base, i, n) {
   return mixColor(base, css('--surface-1'), pct);
 }
 
-/* A row of small toggle chips, rebuilt whenever the set of years changes. */
+/* A row of small toggle chips, rebuilt whenever the set of years changes.
+   An unchanged row keeps its old buttons and so its old onPick, so a handler
+   must render from DATA rather than from what its closure captured. */
 function chipRow(host, items, onPick) {
   const sig = items.map(i => `${i.key}:${i.on}`).join('|');
   if (host.dataset.sig === sig) return;
@@ -2212,7 +2214,7 @@ function renderMonthly(history) {
   ], item => {
     if (item.key === 'cmp') YEAR_COMPARE = !YEAR_COMPARE;
     else YEAR_SEL = item.key;
-    renderMonthly(history);
+    renderMonthly(DATA.history || { months: [] });
   });
 
   const byYear = {};
@@ -2472,7 +2474,7 @@ function renderCumulative(history) {
   })), item => {
     if (CUM_YEARS.has(item.key)) { if (CUM_YEARS.size > 1) CUM_YEARS.delete(item.key); }
     else CUM_YEARS.add(item.key);
-    renderCumulative(history);
+    renderCumulative(DATA.history || { days: [] });
   });
 
   const dropped = partial.length
