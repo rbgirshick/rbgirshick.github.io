@@ -1734,7 +1734,8 @@ function renderRangeBars(inRange, from, to) {
     for (const m of [...months.keys()].sort()) {
       const d = new Date(m + '-15T12:00:00');
       push(d, MONTHS[+m.slice(5) - 1], m.slice(2, 4));
-      buckets[buckets.length - 1].row = months.get(m);
+      // pinned to the 15th for drawing, but labelled by the month it sums
+      Object.assign(buckets[buckets.length - 1], { row: months.get(m), key: m, month: true });
     }
   }
   const window14 = buckets;
@@ -1858,7 +1859,10 @@ function renderRangeBars(inRange, from, to) {
       const r = w.row;
       const line = s => `<div class="row"><span class="sw" style="background:${s.color}"></span>${s.name}`
         + `<span class="num">${r[s.key] === null || r[s.key] === undefined ? '—' : fmt(r[s.key], 1)} kWh</span></div>`;
-      const heading = w.row && w.row.days > 1
+      const heading = w.month
+        ? esc(w.d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))
+          + (w.row ? ` · ${w.row.days} days` : '')
+        : w.row && w.row.days > 1
         ? `${esc(w.d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}`
           + ` · ${w.row.days} days`
         : esc(w.d.toLocaleDateString(undefined,
@@ -1883,7 +1887,7 @@ function renderRangeBars(inRange, from, to) {
   });
 
   buildTable($('strip-table'),
-    ['Starting', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Note'],
+    [perBucket ? 'Starting' : 'Month', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Note'],
     window14.slice().reverse().map(w => {
       const r = w.row;
       if (!r) return [w.key, '—', '—', '—', { v: 'no data', cls: 'alert' }];
