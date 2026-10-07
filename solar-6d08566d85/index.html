@@ -3354,6 +3354,10 @@ function compareCells(av, bv) {
   return a.localeCompare(b);
 }
 
+/* The sort a reader chose, per table id, so the 60s refresh - which rebuilds
+   every table - does not throw it away. */
+const TABLE_SORT = {};
+
 function buildTable(host, headers, rows, sortable = false) {
   clear(host);
   const table = document.createElement('table');
@@ -3365,14 +3369,18 @@ function buildTable(host, headers, rows, sortable = false) {
     th.textContent = h;
     if (sortable) {
       th.tabIndex = 0;
-      const sort = () => {
-        const dir = th.dataset.dir === 'asc' ? -1 : 1;
+      const sort = (keep = false) => {
+        const dir = keep ? (th.dataset.dir === 'asc' ? 1 : -1)
+          : (th.dataset.dir === 'asc' ? -1 : 1);
         htr.querySelectorAll('th').forEach(x => delete x.dataset.dir);
         th.dataset.dir = dir === 1 ? 'asc' : 'desc';
+        if (!keep) TABLE_SORT[host.id] = { col: i, dir: th.dataset.dir };
         rows.sort((a, b) => compareCells(cellValue(a[i]), cellValue(b[i])) * dir);
-        fill();
+        if (!keep) fill();
       };
-      th.addEventListener('click', sort);
+      const saved = TABLE_SORT[host.id];
+      if (saved && saved.col === i) { th.dataset.dir = saved.dir; sort(true); }
+      th.addEventListener('click', () => sort());
       th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); } });
     }
     htr.appendChild(th);
