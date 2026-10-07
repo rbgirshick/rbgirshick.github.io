@@ -2599,21 +2599,37 @@ function renderCumulative(history) {
 
   /* End labels, nudged apart. Years that finish close together - which is
      exactly what a steady system looks like - would otherwise print on top of
-     one another, so each is pushed down until it clears the one above and a
-     leader line ties it back to its own end point. */
+     one another, so each is moved just enough to clear its neighbours and a
+     leader line ties it back to its own end point. Only labels that end at the
+     same place compete: this year's curves stop today, the others at December,
+     and pushing one group to make room for the other sent the December labels
+     drifting far from their lines. Neighbours are spread both ways, not only
+     downward, so a crowded group stays centred on its points. */
   const ends = curves.map((c, i) => {
     const last = c.pts[c.pts.length - 1];
     return { i, year: c.year, newest: c.newest, x: X(last[0]), y: Y(last[1]), color: c.color };
-  }).sort((a, b) => a.y - b.y);
-  const GAP = 13;
-  for (let k = 1; k < ends.length; k++) {
-    if (ends[k].y - ends[k - 1].ly < GAP) ends[k].ly = ends[k - 1].ly + GAP;
-    else ends[k].ly = ends[k].y;
-    if (k === 1 && ends[0].ly === undefined) ends[0].ly = ends[0].y;
+  });
+  const GAP = 12;
+  const groups = new Map();
+  for (const e of ends) {
+    const key = Math.round(e.x / 24);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
   }
-  if (ends.length) ends[0].ly = ends[0].ly === undefined ? ends[0].y : ends[0].ly;
-  for (let k = 1; k < ends.length; k++) {
-    ends[k].ly = Math.max(ends[k].ly ?? ends[k].y, ends[k - 1].ly + GAP);
+  for (const g of groups.values()) {
+    g.sort((a, b) => a.y - b.y);
+    for (const e of g) e.ly = e.y;
+    for (let pass = 0; pass < 60; pass++) {
+      let moved = false;
+      for (let k = 1; k < g.length; k++) {
+        const over = GAP - (g[k].ly - g[k - 1].ly);
+        if (over > 0.1) { g[k - 1].ly -= over / 2; g[k].ly += over / 2; moved = true; }
+      }
+      const lo = padT + 4, hi = H - padB - 2;
+      if (g[0].ly < lo) { const d = lo - g[0].ly; for (const e of g) e.ly += d; }
+      if (g[g.length - 1].ly > hi) { const d = g[g.length - 1].ly - hi; for (const e of g) e.ly -= d; }
+      if (!moved) break;
+    }
   }
   for (const e of ends) {
     svg.appendChild(el('circle', { cx: e.x, cy: e.y, r: 3.5, fill: e.color,
@@ -2623,9 +2639,11 @@ function renderCumulative(history) {
         d: `M ${(e.x + 3).toFixed(1)} ${e.y.toFixed(1)} L ${(e.x + 7).toFixed(1)} ${e.ly.toFixed(1)}`,
         fill: 'none', stroke: css('--axis'), 'stroke-width': 1 }));
     }
+    // in its series' colour, darkened to read as text: a column of grey years
+    // could not say which were production and which consumption
     text(svg, e.x + 9, e.ly + 3.5, String(e.year),
-      { 'font-size': 10, fill: e.newest ? css('--text-secondary') : css('--text-muted'),
-        'text-anchor': 'start' });
+      { 'font-size': 10, 'text-anchor': 'start', 'font-weight': e.newest ? 600 : 400,
+        style: `fill: color-mix(in srgb, ${e.color} ${e.newest ? 75 : 60}%, var(--text-primary))` });
   }
 
   // one crosshair reading every shown year at the same day of the year
