@@ -928,14 +928,16 @@ let firstRender = true;
 
    A fragment key is NOT written to storage until it has actually decrypted
    something, so a truncated or wrong #k= (an email client wrapping the line,
-   say) can never overwrite a stored key that works.                        */
+   say) can never overwrite a stored key that works. Nor does it lock that
+   key out: if the fragment key fails, the stored one gets a single try.    */
 function readKeyMaterial() {
+  const stored = localStorage.getItem(KEY_STORAGE);
   const m = location.hash.match(/[#&]k=([A-Za-z0-9_\-=]+)/);
   if (m) {
     history.replaceState(null, '', location.pathname + location.search);
-    return { material: m[1], fromFragment: true };
+    return { material: m[1], fromFragment: true, fallback: stored !== m[1] ? stored : null };
   }
-  return { material: localStorage.getItem(KEY_STORAGE), fromFragment: false };
+  return { material: stored, fromFragment: false, fallback: null };
 }
 
 function b64urlToBytes(s) {
@@ -4114,6 +4116,7 @@ async function boot() {
       fail(`Could not reach the data feed — ${e.message}. The dashboard will `
         + 'work again once the connection is back; your key is still saved.', true);
     } else {
+      if (await fallBackToStoredKey()) return boot();
       // A genuine decrypt failure. Only a stored key can be stale here; a
       // fragment key was never written, so there is nothing to clean up.
       if (!FROM_FRAGMENT) localStorage.removeItem(KEY_STORAGE);
@@ -4135,6 +4138,25 @@ async function boot() {
 }
 
 let FROM_FRAGMENT = false;
+let FALLBACK_MATERIAL = null;  // the stored key, while a fragment key is on trial
+
+/* Swap a failed fragment key for the stored one. Once only, and only from a
+   fragment: the stored key then stands or falls on its own. */
+async function fallBackToStoredKey() {
+  const material = FALLBACK_MATERIAL;
+  FALLBACK_MATERIAL = null;
+  if (!FROM_FRAGMENT || !material) return false;
+  try {
+    KEY = await importKey(material);
+  } catch (e) {
+    localStorage.removeItem(KEY_STORAGE);
+    return false;
+  }
+  console.warn('the link\'s key did not work; using the key saved on this device');
+  FROM_FRAGMENT = false;
+  KEY_MATERIAL = material;
+  return true;
+}
 
 async function start() {
   if (new URLSearchParams(location.search).has('mock')) {
@@ -4145,9 +4167,10 @@ async function start() {
     renderAll();
     return;                       // no key, no network, no refresh loop
   }
-  const { material, fromFragment } = readKeyMaterial();
+  const { material, fromFragment, fallback } = readKeyMaterial();
   FROM_FRAGMENT = fromFragment;
   KEY_MATERIAL = material;
+  FALLBACK_MATERIAL = fallback;
   if (!material) {
     $('gate-msg').innerHTML =
       'This page needs its decryption key. Open the full bookmarked link — the one ending '
@@ -4157,6 +4180,7 @@ async function start() {
   try {
     KEY = await importKey(material);
   } catch (e) {
+    if (await fallBackToStoredKey()) { await boot(); return; }
     if (!fromFragment) localStorage.removeItem(KEY_STORAGE);
     $('gate-msg').textContent = fromFragment
       ? `That link's key is not valid (${e.message}) — it may have been truncated. `
