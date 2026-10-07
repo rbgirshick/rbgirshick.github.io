@@ -904,7 +904,9 @@ footer.colophon {
 
 const REPO = 'rbgirshick/pv-feed-a9074342';
 const BASE = `https://raw.githubusercontent.com/${REPO}/main`;
-const FILES = ['live', 'intraday', 'history', 'inverters'];
+// inverters.bin is also published, but nothing here draws it - fetching it
+// only gave the whole load one more way to fail.
+const FILES = ['live', 'intraday', 'history'];
 const REFRESH_MS = 60000;
 const FETCH_TIMEOUT_MS = 20000;   // well inside REFRESH_MS, so a hung load cannot block the next
 const STALE_AFTER_MINUTES = 60;   // matches the publisher's own threshold
