@@ -666,7 +666,7 @@ footer.colophon {
   </div>
 
   <div id="mock-banner" class="mock-banner hidden">
-    Mock data — four synthetic years for testing the multi-year views. Nothing here was measured.
+    Mock data: four years of made-up numbers for testing. Nothing here was measured.
   </div>
 
   <div id="app" class="hidden">
@@ -678,8 +678,8 @@ footer.colophon {
       <span class="spacer"></span>
       <span class="updated" id="updated"></span>
       <span class="pill ok" id="status"><span class="dot"></span><span id="status-text">Live</span></span>
-      <button class="ghost" id="theme-btn" type="button" data-tip="Cycle light · dark · system">Theme</button>
-      <button class="ghost" id="forget-btn" type="button" data-tip="Removes the stored decryption key from this browser">Forget key</button>
+      <button class="ghost" id="theme-btn" type="button" data-tip="Switch between light, dark and your system setting">Theme</button>
+      <button class="ghost" id="forget-btn" type="button" data-tip="Remove the saved key from this browser">Forget key</button>
     </header>
 
     <section class="card hero">
@@ -692,7 +692,7 @@ footer.colophon {
           <span class="dp" data-dp><input class="dp-field" id="hero-goto" type="text"
                  inputmode="numeric" autocomplete="off" spellcheck="false"
                  placeholder="yyyy-mm-dd" aria-label="Go to day"
-                 data-tip="Jump to a day — limited to the days with 5-minute samples"><button
+                 data-tip="Go to a day (only days with 5-minute data)"><button
                  class="dp-open" type="button" aria-label="Open calendar">▦</button></span>
           <button class="ghost" id="hero-today" type="button"
                   data-tip="Back to the latest day">Today</button>
@@ -737,9 +737,9 @@ footer.colophon {
         <span class="push"></span>
         <div class="chart-nav">
           <button class="ghost nav" id="strip-prev" type="button"
-                  aria-label="Earlier" data-tip="Shift the range one window earlier">‹</button>
+                  aria-label="Earlier" data-tip="Earlier period">‹</button>
           <button class="ghost nav" id="strip-next" type="button"
-                  aria-label="Later" data-tip="Shift the range one window later">›</button>
+                  aria-label="Later" data-tip="Later period">›</button>
           <button class="toggle-table" data-toggle="strip-table">Table</button>
         </div>
       </div>
@@ -799,7 +799,7 @@ footer.colophon {
       </div>
       <div class="roof-scroll"><div class="roof" id="array"></div></div>
       <div class="array-foot">
-        <span>producing now, less</span>
+        <span>Output now: less</span>
         <span class="ramp" id="array-ramp"></span>
         <span>more</span>
       </div>
@@ -818,36 +818,23 @@ footer.colophon {
         <h2 class="eyebrow">Long run</h2>
         <p class="sub" id="health-sub"></p>
       </div>
-      <p class="sub-head">Output against its own past</p>
+      <p class="sub-head">Output over time</p>
       <details class="explainer">
-        <summary>what this plot is, and how to read it</summary>
+        <summary>How to read this chart</summary>
       <div class="explain">
-        <b>The vertical axis is one month's output as a percentage of what this same array
-        produced in the same weather during 2023 — its best documented year.</b> Both sides of that division
-        are kWh, so the percentage has no units of its own — it is a comparison, not a quantity:
-        <span class="formula">this month &nbsp;=&nbsp; <b>612 kWh</b> actually produced<br>
-          baseline &nbsp;&nbsp;&nbsp;=&nbsp; <b>606 kWh</b> the array would have made in the same
-          sun and heat<br><br>
-          <i>plotted</i> &nbsp;&nbsp;&nbsp;=&nbsp; 612 kWh <b>divided by</b> 606 kWh
-          &nbsp;=&nbsp; <b>1.01</b> &nbsp;=&nbsp; <b>101%</b><br>
-          <i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-          the kWh cancel, which is why the axis is a percentage</i></span>
-        Because the same weather appears on both sides, a dull month does not count against the
-        panels — only the array itself can move this number. <b>100% means as good as the 2023
-        array</b>; below means less output than that array would have managed in the same sun.
-        <p><b>How to read it.</b> The shaded band is one standard deviation of this site's own
-        month-to-month scatter around the 2023 level. A month inside it is indistinguishable
-        from the 2023 array; a sustained drift below is the array changing — soiling, shade
-        that has grown, a module fading, ordinary ageing. A jump back up usually means rain
-        or a wash. The model includes an airmass term for the site's low-sun incidence
-        losses, so winter months are judged against winter physics rather than reading
-        low by default.</p>
-        <p><b>What a single month will not tell you.</b> Panel ageing runs about 0.5% a year,
-        far below the monthly scatter, so no one point here says anything about slow decline —
-        the fitted trend under the chart, drawn from the whole 2022-onward series, is the
-        long-run statement. Sudden faults are a different question with a different yardstick:
-        the alerting job fits its own baseline from recent months, so a pager asks "worse than
-        recently?" while this chart asks "worse than 2023?".</p>
+        <b>Each point is one month's output as a percentage of what the array made in 2023,
+        its best year, under the same weather.</b>
+        <span class="formula">this month &nbsp;=&nbsp; <b>612 kWh</b> produced<br>
+          2023 array, same weather &nbsp;=&nbsp; <b>606 kWh</b><br>
+          <i>plotted</i> &nbsp;=&nbsp; 612 ÷ 606 &nbsp;=&nbsp; <b>101%</b></span>
+        The weather is on both sides, so a dull month doesn't lower the number; only a change
+        in the array does. Low winter sun is accounted for too.
+        <p><b>The shaded band</b> is the normal month-to-month scatter. Inside it, nothing has
+        changed. A sustained drift below means the array is losing output: dirt, new shade, a
+        failing panel or ageing. A jump back up usually follows rain or a wash.</p>
+        <p><b>One month can't show slow ageing</b>, which is about 0.5% a year. The trend below
+        the chart can. Fault alerts use a separate baseline from recent months: they ask
+        "worse than lately?", not "worse than 2023?".</p>
       </div>
       </details>
       <div class="chart-box chart-wrap">
@@ -856,17 +843,17 @@ footer.colophon {
         <div class="tooltip" id="health-tip"></div>
       </div>
       <p class="range-note" id="health-note"></p>
-      <p class="sub-head">Against the utility meter</p>
+      <p class="sub-head">Checked against the utility bill</p>
       <details class="explainer">
-        <summary>why this comparison matters, and what the percentage means</summary>
+        <summary>Why this check matters</summary>
       <div class="explain">
-        Net grid here is <b>computed, not measured</b>: these CTs sit on the wrong side of the
-        solar tie-in, so every consumption figure is reconstructed in software. The meter is the
-        only instrument in this system not derived from the PVS6, which makes it the only
-        independent check there is.
-        <span class="formula">difference &nbsp;=&nbsp; our net grid &nbsp;−&nbsp; the utility's net
-          grid<br>as a % of &nbsp;<i>(imported + exported)</i>, since net crosses zero twice a
-          year</span>
+        Consumption and net grid here are <b>calculated, not measured</b>: the current sensors
+        sit on the wrong side of the solar connection, so the figures are rebuilt in software.
+        The utility meter is the only independent measurement, which makes the bills the real
+        test.
+        <span class="formula">difference &nbsp;=&nbsp; our net grid &nbsp;−&nbsp; the bill's net
+          grid<br>shown as a % of <i>imported + exported</i>, because net grid itself crosses zero
+          twice a year</span>
       </div>
       </details>
       <div class="table-wrap" id="bills-table" style="margin-top:4px"></div>
@@ -876,7 +863,7 @@ footer.colophon {
     <section class="card">
       <div class="card-head">
         <h2 class="eyebrow">Meters</h2>
-        <p class="sub">Resolved by serial number, never device index.</p>
+        <p class="sub">Matched by serial number, since the PVS6 can reorder them.</p>
       </div>
       <div class="meters" id="meters"></div>
     </section>
@@ -891,8 +878,8 @@ footer.colophon {
     </section>
 
     <footer class="colophon">
-      read every 5 minutes by a raspberry pi tucked inside the pvs6<br>
-      encrypted before it leaves the house · the key stays on this device
+      Read every 5 minutes by a Raspberry Pi inside the PVS6.<br>
+      Encrypted before it leaves the house. The key stays on this device.
     </footer>
   </div>
 </div>
@@ -1398,16 +1385,14 @@ function renderHero(intraday, live, stale = false) {
       const remain = band * (1 - plan.elapsed);
       labels.push({ y: Yb(plan.nowcast), text: `≈${fmt(plan.nowcast, 0)} projected`,
         tip: '<b>Projected total</b>'
-          + `<div class="row">banked so far<span class="num">${fmt(plan.actual, 1)} kWh</span></div>`
-          + `<div class="row">still to come<span class="num">${fmt(left, 1)} kWh</span></div>`
-          + `<div class="row">projected<span class="num">${fmt(plan.nowcast, 1)} kWh</span></div>`
-          + `<div class="row">remaining error<span class="num">±${fmt(remain, 1)} kWh</span></div>`
+          + `<div class="row">produced so far<span class="num">${fmt(plan.actual, 1)} kWh</span></div>`
+          + `<div class="row">still expected<span class="num">${fmt(left, 1)} kWh</span></div>`
+          + `<div class="row">total<span class="num">${fmt(plan.nowcast, 1)} kWh</span></div>`
+          + `<div class="row">uncertainty<span class="num">±${fmt(remain, 1)} kWh</span></div>`
           + '<div style="color:var(--text-muted);margin-top:3px">'
           + (plan.elapsed < 0.005
-            ? "Today's sunshine has barely started, so this is still the forecast — nothing "
-              + 'measured yet to disagree with it. It will move as production comes in.'
-            : `${fmt(plan.elapsed * 100, 0)}% of today's sunshine has already happened, so that `
-              + 'much of this is measured, not predicted')
+            ? "The sun is barely up, so this is still the forecast. It updates as production comes in."
+            : `${fmt(plan.elapsed * 100, 0)}% of today's sun has passed; that part is measured, not forecast.`)
           + '</div>' });
     }
 
@@ -1609,11 +1594,11 @@ function renderReadouts(live, peak, loadPeak, netPeak) {
   box.appendChild(tile('Producing', PROD, c.pv_kw ?? 0,
     t.pv_kwh !== undefined ? `<b>${fmt(t.pv_kwh)} kWh</b> so far today` : '',
     { color: PROD, frac: (c.pv_kw ?? 0) / peak,
-      title: `Now vs the fastest production of the last ${days} days (${fmt(peak, 1)} kW)` }));
+      title: `Now, against the highest output of the last ${days} days (${fmt(peak, 1)} kW)` }));
   box.appendChild(tile('Using', CONS, c.consumption_kw ?? 0,
     t.consumption_kwh !== undefined ? `<b>${fmt(t.consumption_kwh)} kWh</b> so far today` : '',
     { color: CONS, frac: (c.consumption_kw ?? 0) / loadPeak,
-      title: `Now vs the biggest household draw of the last ${days} days (${fmt(loadPeak, 1)} kW)` }));
+      title: `Now, against the highest use of the last ${days} days (${fmt(loadPeak, 1)} kW)` }));
 
   const net = c.net_kw ?? 0;
   const exporting = net < 0;
@@ -1625,7 +1610,7 @@ function renderReadouts(live, peak, loadPeak, netPeak) {
       ? `<b>${fmt(Math.abs(t.net_kwh))} kWh</b> ${t.net_kwh < 0 ? 'exported' : 'imported'} today`
       : '',
     { diverge: true, dir: exporting ? -1 : 1, color: dirColor, frac: Math.abs(net) / netPeak,
-      title: `Grid flow now vs the biggest of the last ${days} days (${fmt(netPeak, 1)} kW) — right of center imports, left exports` }));
+      title: `Grid flow now, against the largest of the last ${days} days (${fmt(netPeak, 1)} kW). Right of center: importing. Left: exporting.` }));
 }
 
 /* ---------- 14 days -------------------------------------------------------
@@ -1747,7 +1732,7 @@ function renderRangeBars(inRange, from, to) {
     : perBucket === 7 ? 'one bar per week' : 'one bar per month';
   const sub = $('range-sub');
   if (sub && !sub.textContent.includes('one bar per')) {
-    sub.textContent = `${sub.textContent} · ${bucketWord}`;
+    sub.textContent = `${sub.textContent}, ${bucketWord}.`;
   }
   const newest = parse(inRange[inRange.length - 1].date);
   const PROD = css('--prod'), CONS = css('--cons'), NET = css('--net');
@@ -1873,13 +1858,13 @@ function renderRangeBars(inRange, from, to) {
         + (r
           ? SERIES.map(line).join('')
             + (r.imputed
-              ? '<div style="color:var(--text-muted);margin-top:3px">estimated — outage total '
-                + 'split across days, not measured</div>'
+              ? '<div style="color:var(--text-muted);margin-top:3px">estimated: an outage '
+                + 'total split across days</div>'
               : !(r.hours >= 23 && r.hours <= 25)
                 ? `<div style="color:var(--text-muted);margin-top:3px">partial day`
-                  + `${r.hours ? ` — ${fmt(r.hours, 1)} h covered` : ''}</div>`
+                  + `${r.hours ? `, ${fmt(r.hours, 1)} h` : ''}</div>`
                 : '')
-          : '<div class="row">no data — collection was down</div>');
+          : '<div class="row">no data (collection was down)</div>');
       tip.style.opacity = 1;
       tip.style.left = `${(x + band / 2) / W * box.width}px`;
       tip.style.top = `${top / H * box.height}px`;
@@ -2236,7 +2221,7 @@ function renderMonthly(history) {
     // newest first, matching every other year listing on the page
     ...[...years].reverse().map(y => ({ key: y, label: String(y), on: y === year })),
     ...(multi ? [{ key: 'cmp', label: 'Compare', on: YEAR_COMPARE,
-      tip: 'Trace the other years over these bars, and add them to the hover' }] : []),
+      tip: 'Overlay the other years' }] : []),
   ], item => {
     if (item.key === 'cmp') YEAR_COMPARE = !YEAR_COMPARE;
     else YEAR_SEL = item.key;
@@ -2254,10 +2239,10 @@ function renderMonthly(history) {
   legendInto('monthly-legend', [['Production', PROD], ['Consumption', CONS]]);
   const hasApp = Object.values(shown).some(m => m.src === 'app');
   $('monthly-sub').textContent = (multi
-    ? `${year} — whole-month totals, outage catch-up rows folded in`
-    : 'Whole-month totals — outage catch-up rows are folded in.')
-    + (hasApp ? ' Months before Oct 2025 were recorded by the mySunPower app'
-      + ' (net grid ~2% solar-optimistic against the utility meter).' : '');
+    ? `${year}, by month.`
+    : 'Totals by month.')
+    + (hasApp ? ' Months before Oct 2025 come from the mySunPower app, whose net grid runs'
+      + ' about 2% too favourable against the utility meter.' : '');
 
   const W = chartW(svg);
   const narrow = W < 560;
@@ -2295,7 +2280,7 @@ function renderMonthly(history) {
   // colours already say it, so narrow screens get the short form
   gridFor(B, bBot, bTop, bStep, Yb, narrow
     ? 'Net grid, kWh'
-    : 'Net grid, kWh: above zero imported, below exported');
+    : 'Net grid, kWh: above zero is imported, below is exported');
 
   const series = [
     { name: 'Production', color: PROD, key: 'pv_kwh' },
@@ -2504,21 +2489,21 @@ function renderCumulative(history) {
   });
 
   const dropped = partial.length
-    ? ` — ${partial.join(', ')} left out, ${partial.length === 1 ? 'its records begin' : 'their records begin'} `
-      + `${(byYear[partial[0]] || [{}])[0].date || 'mid-year'}, so ${partial.length === 1 ? 'it is' : 'they are'} not comparable`
+    ? `. ${partial.join(', ')} ${partial.length === 1 ? 'is' : 'are'} left out: the records start `
+      + `${(byYear[partial[0]] || [{}])[0].date || 'mid-year'}`
     : '';
   const appYears = chosen.filter(y => firstDoy(y) > START_SLACK_DAYS);
   const patchedYears = appYears.filter(y => (monthCurveYear(y) || {}).patched);
   const appNote = appYears.length
-    ? ` — ${appYears.join(', ')} dashed: month-resolution (app-recorded and metered months)`
+    ? `. Dashed: ${appYears.join(', ')}, from monthly totals`
       + (patchedYears.length
-        ? `; ${patchedYears.join(', ')} has one part-metered month interpolated` : '')
+        ? ` (one partly measured month in ${patchedYears.join(', ')} is interpolated)` : '')
     : '';
   $('ytd-sub').textContent = noneWhole
-    ? `${allYears[allYears.length - 1]} so far — records begin mid-year, so there is nothing to compare against yet`
+    ? `${allYears[allYears.length - 1]} so far. Records start mid-year, so there is no earlier year to compare.`
     : (chosen.length > 1
-      ? `accumulated from January 1 — ${chosen.length} years overlaid, older years fainter${appNote}${dropped}`
-      : `${newest} accumulated from January 1${appNote}${dropped}`);
+      ? `Running total from January 1. Older years are fainter${appNote}${dropped}.`
+      : `${newest}, running total from January 1${appNote}${dropped}.`);
 
   const W = chartW(svg);
   const narrow = W < 560;
@@ -2840,8 +2825,8 @@ function renderRange(history, live) {
   // than the window asked for (the window may reach back before collection
   // started, or into a gap), so it is labelled as such.
   $('range-sub').textContent = n
-    ? `${from} to ${to} — ${spanDays} day${spanDays === 1 ? '' : 's'} covered`
-    : `${from} to ${to} — no data in this range`;
+    ? `${spanDays} day${spanDays === 1 ? '' : 's'}, ${from} to ${to}`
+    : `No data from ${from} to ${to}.`;
 
   const PROD = css('--prod'), CONS = css('--cons');
   const box = $('range-totals');
@@ -2868,34 +2853,33 @@ function renderRange(history, live) {
   const exporting = net < 0;
   box.appendChild(tile(exporting ? 'Exported' : 'Imported', css('--net'), Math.abs(net),
     !spanDays ? '—' : single ? (isToday ? 'so far today' : '')
-      : `net of ${kfmt(Math.abs(net) / spanDays, 1)} kWh/day ${exporting ? 'out' : 'in'}`));
+      : `${kfmt(Math.abs(net) / spanDays, 1)} kWh/day net`));
 
   // Caveats: the same ones the monthly rollups carry, but a hand-picked window
   // can land on them squarely, so they are spelled out rather than assumed.
   const notes = [];
   const est = inRange.filter(d => d.imputed);
   if (est.length) {
-    notes.push(`${est.length} day${est.length === 1 ? ' is an' : 's are'} estimated `
-      + `(${est[0].date} to ${est[est.length - 1].date}, no per-day data during the outage) — `
-      + 'the totals are measured, only their split across days is modelled');
+    notes.push(`${est.length} day${est.length === 1 ? ' is' : 's are'} estimated `
+      + `(${est[0].date} to ${est[est.length - 1].date}, an outage). The total is measured; `
+      + 'only its split across days is estimated');
   }
   if (n && n !== spanDays) {
-    notes.push(`${n} summary row${n === 1 ? '' : 's'} cover${n === 1 ? 's' : ''} these ${spanDays} days, `
-      + 'so per-day figures are averaged over the calendar span');
+    notes.push(`only ${n} of these ${spanDays} days have their own row, so per-day figures `
+      + 'are averaged over all of them');
   }
   const partial = inRange.filter(d => d.partial);
   const lumps = inRange.filter(d => !d.partial && (d.hours === null || d.hours === undefined
     || d.hours < 23 || d.hours > 25));
   const excluded = inRange.filter(d => (d.alerts || '').startsWith('⚠️ EXCLUDED'));
-  if (partial.length) notes.push('today is still in progress');
+  if (partial.length) notes.push('today is not over yet');
   if (lumps.length) {
-    notes.push(`${lumps.length} row${lumps.length === 1 ? '' : 's'} cover${lumps.length === 1 ? 's' : ''} `
-      + `more or less than a day (${lumps.map(d => d.date).join(', ')}) — an outage catch-up total `
-      + 'lands entirely on the day it was recorded');
+    notes.push(`${lumps.length === 1 ? 'one day covers' : `${lumps.length} days cover`} more or `
+      + `less than 24 hours (${lumps.map(d => d.date).join(', ')}), usually around an outage`);
   }
   if (excluded.length) {
-    notes.push(`${excluded.length} day${excluded.length === 1 ? '' : 's'} zeroed by a meter counter `
-      + `reset (${excluded.map(d => d.date).join(', ')}) and cannot be recovered`);
+    notes.push(`${excluded.length} day${excluded.length === 1 ? ' has' : 's have'} no usable data `
+      + `(${excluded.map(d => d.date).join(', ')})`);
   }
   const dNum = str => Math.round(Date.parse(str + 'T00:00:00') / 86400000);
   const newestDay = (live.today && live.today.date) || days[days.length - 1].date;
@@ -3113,8 +3097,8 @@ function renderArray(live) {
   clear(box);
   const list = live.inverters || [];
   $('array-sub').textContent =
-    `${list.length} microinverters in three strings, drawn as they sit on the roof · `
-    + `shaded by output right now · each panel judged against its own string`;
+    `${list.length} panels as laid out on the roof, shaded by current output. `
+    + `Each is compared with the rest of its string.`;
 
   /* A continuous tint, not three solid steps. With steps, every panel on a
      sunny day landed in the top one and the roof became 25 identical blocks
@@ -3258,7 +3242,7 @@ function renderArray(live) {
   if (unplaced.length) {
     const lab = document.createElement('div');
     lab.className = 'string-label';
-    lab.textContent = 'not on the drawing';
+    lab.textContent = 'Not on the roof plan';
     box.appendChild(lab);
     const row = document.createElement('div');
     row.className = 'string-row';
@@ -3321,8 +3305,8 @@ function renderMeters(live) {
 function renderHistory(history) {
   const days = dailySeries(history).reverse();
   const est = days.filter(d => d.imputed).length;
-  $('history-sub').textContent = `${days.length} days on record — green means the grid owed you`
-    + (est ? `, ${est} estimated` : '');
+  $('history-sub').textContent = `${days.length} days`
+    + (est ? `, ${est} estimated` : '') + '. Green net grid means you exported more than you imported.';
   buildTable($('history'),
     ['Date', 'Production (kWh)', 'Consumption (kWh)', 'Net grid (kWh)', 'Inverters', 'Hours', 'Alerts'],
     days.map(d => [
@@ -3333,7 +3317,7 @@ function renderHistory(history) {
       d.imputed ? { v: '—', cls: 'est' } : d.inverters,
       d.imputed ? { v: '—', cls: 'est' }
         : (d.hours === null || d.hours === undefined ? '—' : fmt(d.hours, 1)),
-      { v: d.imputed ? '≈ estimated — outage, no per-day data' : (d.alerts || ''),
+      { v: d.imputed ? '≈ estimated (outage, no per-day data)' : (d.alerts || ''),
         cls: d.imputed ? 'alert est' : 'alert' },
     ]), true);
 }
@@ -3592,7 +3576,7 @@ function buildMockData() {
           lifetime_pos_kwh: 41000, lifetime_neg_kwh: 0 },
         frequency_hz: 60, voltage_v: 249.5,
       },
-      alerts: [{ level: 'info', text: 'Mock data — four synthetic years, nothing here was measured.' }],
+      alerts: [{ level: 'info', text: 'Mock data. Nothing here was measured.' }],
     },
     intraday: { generated: '', days: 14, tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       columns: ['t', 'pv_kw', 'consumption_kw', 'net_kw'], rows },
@@ -3695,16 +3679,15 @@ function renderWeather(live) {
         ? row('visibility', `${fmt(station.visibility_km, 0)} km`) : '')
     + (air && air.pm2_5 !== null && air.pm2_5 !== undefined
         ? row('smoke (PM2.5)', `${fmt(air.pm2_5, 1)} µg/m³${air.aqi ? `, AQI ${air.aqi}` : ''}`) : '')
-    + (sky ? note(`Measured by the array itself: output now against the best this array has done `
-        + `at this time of day across ${sky.from_days} comparable days. It reads sunlight, not `
-        + `cloud - smoke dims the sun while leaving the sky clear.`) : '')
+    + (sky ? note(`Measured by the array: output now against its best at this time of day `
+        + `over ${sky.from_days} similar days. It measures sunlight, so smoke can read as cloud.`) : '')
     + '<b style="display:block;margin-top:6px">Forecast</b>'
     + row(esc(dayLabel), `${deg(t.temp_max)} / ${deg(t.temp_min)}${unitLetter}`)
     + row('rain chance', `${Math.round(t.precip_chance || 0)}%`)
     + row('sunshine', `${fmt(t.radiation_kwh_m2, 1)} ${esc(u.radiation)}`)
     + row('daylight', `${clock(t.sunrise)} – ${clock(t.sunset)}`)
     + row('model cloud', `${Math.round(c.cloud_pct)}%`)
-    + note(`Forecast from ${esc(w.model || 'a weather model')}; read by the pi, not by this browser.`);
+    + note(`Forecast from ${esc(w.model || 'a weather model')}, fetched by the Pi.`);
   box.tabIndex = 0;
 }
 
@@ -3752,17 +3735,17 @@ function renderHealth(history) {
   clear(svg);
 
   if (!series.length) {
-    $('health-sub').textContent = 'not enough complete months yet';
+    $('health-sub').textContent = 'Not enough full months yet.';
     $('health-note').textContent = '';
   } else {
     const b = h.baseline || {};
     $('health-sub').textContent =
       (b.ref_year
-        ? `each month against the array's best documented year — 100% = the ${b.ref_year} array`
-        : `each month against the array as it was in ${b.from ? b.from.slice(0, 7) : 'the baseline'}`
-          + `–${b.to ? b.to.slice(0, 7) : ''} · 100% means unchanged`)
-      + (series.some(p => p.src) ? ' · dashed span: app-recorded months' : '')
-      + ' · blue steps: yearly means, season-balanced';
+        ? `Each month compared with the ${b.ref_year} array, its best year. 100% means no change.`
+        : `Each month compared with the array in ${b.from ? b.from.slice(0, 7) : 'the baseline'}`
+          + `–${b.to ? b.to.slice(0, 7) : ''}. 100% means no change.`)
+      + (series.some(p => p.src) ? ' Dashed: months from the mySunPower app.' : '')
+      + ' Blue steps: yearly averages.';
 
     const W = chartW(svg), narrow = W < 560;
     const H = narrow ? 210 : 220;
@@ -3891,14 +3874,12 @@ function renderHealth(history) {
       tip.innerHTML = `<b>${MONTHS[+p.month.slice(5) - 1]} ${p.month.slice(0, 4)}</b>`
         + `<div class="row">output<span class="num">${fmt(p.index * 100, 1)}${against}</span></div>`
         + `<div class="row">produced<span class="num">${fmt(p.actual_kwh, 0)} kWh</span></div>`
-        + `<div class="row">${b.ref_year ? b.ref_year + ' array' : 'baseline'} would give<span class="num">${fmt(p.expected_kwh, 0)} kWh</span></div>`
-        + `<div class="row">so<span class="num">${fmt(p.actual_kwh, 0)} / ${fmt(p.expected_kwh, 0)}`
-        + ` = ${fmt(p.index * 100, 1)}%</span></div>`
+        + `<div class="row">${b.ref_year ? b.ref_year + ' array' : 'baseline'}, same weather<span class="num">${fmt(p.expected_kwh, 0)} kWh</span></div>`
         + `<div class="row">days counted<span class="num">${p.days}</span></div>`
         + (p.src === 'app'
           ? '<div class="row">source<span class="num">mySunPower app</span></div>' : '')
-        + '<div style="color:var(--text-muted);margin-top:3px">weather and temperature are '
-        + 'already divided out, so this is the array, not the month</div>';
+        + '<div style="color:var(--text-muted);margin-top:3px">weather is accounted for, '
+        + 'so this reflects the array, not the month</div>';
       tip.style.opacity = 1;
       tip.style.left = `${x / W * box.width}px`;
       tip.style.top = `${y / H * box.height}px`;
@@ -3912,18 +3893,16 @@ function renderHealth(history) {
     const last = series[series.length - 1];
     const runs = series.slice(-3).filter(p => p.index < 1 - SD).length;
     const trendTxt = h.trend
-      ? ` Long-run trend across ${h.trend.months} months: `
+      ? ` Trend over ${h.trend.months} months: `
         + `${h.trend.pct_per_year > 0 ? '+' : ''}${fmt(h.trend.pct_per_year, 1)}`
         + ` ± ${fmt(h.trend.stderr_pct, 1)}%/year.`
       : '';
     $('health-note').textContent = b.ref_year
-      ? `Latest complete month: ${fmt(last.index * 100, 0)}% of the ${b.ref_year} array.`
-        + trendTxt
-        + ' Sudden-fault alerts compare against a recent baseline, not this one.'
-      : `Latest complete month ${fmt(last.index * 100, 0)}% of baseline`
+      ? `Last full month: ${fmt(last.index * 100, 0)}% of the ${b.ref_year} array.` + trendTxt
+      : `Last full month: ${fmt(last.index * 100, 0)}% of baseline`
         + (runs >= 2
-          ? ` — ${runs} of the last 3 months sit below the band, which is worth investigating.`
-          : `, inside the band. Nothing to act on.`)
+          ? `. ${runs} of the last 3 months are below the band, which is worth a look.`
+          : `, within the normal range.`)
         + trendTxt;
   }
 
@@ -3956,13 +3935,11 @@ function renderHealth(history) {
   const worst = complete.length
     ? Math.max(...complete.map(b => Math.abs(b.diff_pct_of_flow || 0))) : null;
   $('bills-note').textContent = worst === null
-    ? 'No billing period is yet covered by complete measured data.'
-    : `Across fully measured periods the two agree to within ${fmt(worst, 1)}% — close enough `
-      + `that the reconstruction is confirmed, and the residual is what you would expect between `
-      + `monitoring-grade CTs and a revenue meter rather than an error in the arithmetic.`
+    ? 'No bill yet covers a period with every day measured.'
+    : `Where every day was measured, the two agree within ${fmt(worst, 1)}%, the expected gap `
+      + `between monitoring sensors and a utility meter.`
       + (bills.some(b => b.app_days)
-        ? ' Periods before collection began are checked against the mySunPower app\u2019s'
-          + ' monthly history instead, pro-rated by days.'
+        ? ' Bills from before collection began are checked against the mySunPower app instead.'
         : '');
 }
 
@@ -3973,7 +3950,7 @@ function renderRecords(history, live) {
   if (!days.length) { $('records-sub').textContent = 'no complete days on record yet'; return; }
 
   const span = `${days[0].date} to ${days[days.length - 1].date}`;
-  $('records-sub').textContent = `${days.length} fully measured days · ${span}`;
+  $('records-sub').textContent = `From ${days.length} fully measured days, ${span}.`;
 
   const best = (label, key, cmp, unit, dec, note) => {
     const pool = days.filter(d => d[key] !== null && d[key] !== undefined);
@@ -3986,16 +3963,16 @@ function renderRecords(history, live) {
 
   const items = [
     best('Best production day', 'pv_kwh', most, 'kWh', 1),
-    best('Leanest production day', 'pv_kwh', least, 'kWh', 1, 'zeros excluded'),
-    best('Heaviest consumption day', 'consumption_kwh', most, 'kWh', 1),
-    best('Lightest consumption day', 'consumption_kwh', least, 'kWh', 1),
+    best('Worst production day', 'pv_kwh', least, 'kWh', 1, 'excluding zero days'),
+    best('Highest consumption day', 'consumption_kwh', most, 'kWh', 1),
+    best('Lowest consumption day', 'consumption_kwh', least, 'kWh', 1),
     best('Most exported in a day', 'net_kwh', least, 'kWh', 1),
     best('Most imported in a day', 'net_kwh', most, 'kWh', 1),
     best('Peak production', 'peak_pv_kw', most, 'kW', 2),
-    best('Peak household draw', 'peak_consumption_kw', most, 'kW', 2),
+    best('Peak consumption', 'peak_consumption_kw', most, 'kW', 2),
     best('Peak export', 'peak_export_kw', most, 'kW', 2),
     best('Peak import', 'peak_import_kw', most, 'kW', 2),
-    best('Most produced after dark', 'night_pv_kwh', most, 'kWh', 2, '22:00–04:00'),
+    best('Most produced at night', 'night_pv_kwh', most, 'kWh', 2, '22:00–04:00'),
   ].filter(Boolean);
 
   // lowest production must ignore days the array simply did not report
@@ -4077,9 +4054,9 @@ function renderAll() {
   const live = DATA.live || {};
   if (TIP_RECHECK) TIP_RECHECK();
   $('updated').textContent = live.latest_epoch
-    ? `read ${siteFmt({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    ? `Last reading ${siteFmt({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
         hour12: true }).format(new Date(live.latest_epoch * 1000))}`
-    : (live.latest_sample ? `read ${live.latest_sample}` : '');
+    : (live.latest_sample ? `Last reading ${live.latest_sample}` : '');
 
   /* Staleness is judged here against the wall clock, not read out of the
      payload. live.status was frozen at publish time, so if the Pi died the
@@ -4094,12 +4071,12 @@ function renderAll() {
     ? (ageMin >= 1440 ? `Stale ${fmt(ageMin / 1440, 1)}d` : `Stale ${fmt(ageMin / 60, 1)}h`)
     : 'Live';
   pill.dataset.tip = noData
-    ? '<b>Feed</b><div style="color:var(--text-muted);margin-top:3px">the Pi is publishing, '
-      + 'but has no samples to report</div>'
+    ? '<b>Feed</b><div style="color:var(--text-muted);margin-top:3px">The Pi is publishing '
+      + 'but has no samples yet.</div>'
     : `<b>Feed</b><div class="row">last sample<span class="num">`
     + `${ageMin < 90 ? `${Math.round(ageMin)} min` : `${fmt(ageMin / 60, 1)} h`} ago</span></div>`
-    + (stale ? '<div style="color:var(--text-muted);margin-top:3px">the Pi has stopped '
-      + 'publishing, or collection has stalled</div>' : '');
+    + (stale ? '<div style="color:var(--text-muted);margin-top:3px">The Pi has stopped '
+      + 'publishing, or collection has stopped.</div>' : '');
 
   renderHero(DATA.intraday || { rows: [] }, live, stale);
   renderMonthly(DATA.history || { months: [] });
@@ -4136,15 +4113,15 @@ async function boot() {
   } catch (e) {
     if (e.transient) {
       // The feed is unreachable, which says nothing about the key: keep it.
-      fail(`Could not reach the data feed — ${e.message}. The dashboard will `
-        + 'work again once the connection is back; your key is still saved.', true);
+      fail(`Can't reach the data feed (${e.message}). It will load once you're back `
+        + 'online. Your key is still saved.', true);
     } else {
       if (await fallBackToStoredKey()) return boot();
       // A genuine decrypt failure. Only a stored key can be stale here; a
       // fragment key was never written, so there is nothing to clean up.
       if (!FROM_FRAGMENT) localStorage.removeItem(KEY_STORAGE);
-      fail('Could not decrypt the data. The key may be wrong or may have been '
-        + `rotated — reopen the full bookmarked link. (${e.message})`);
+      fail('Can\'t decrypt the data. The key may be wrong or out of date: open your '
+        + `bookmarked link again. (${e.message})`);
     }
     return;
   }
@@ -4196,8 +4173,8 @@ async function start() {
   FALLBACK_MATERIAL = fallback;
   if (!material) {
     $('gate-msg').innerHTML =
-      'This page needs its decryption key. Open the full bookmarked link — the one ending '
-      + 'in <code>#k=…</code>. The key is kept on this device and never sent anywhere.';
+      'This page needs its key. Open your bookmarked link, the one ending in '
+      + '<code>#k=…</code>. The key stays on this device.';
     return;
   }
   try {
@@ -4206,9 +4183,9 @@ async function start() {
     if (await fallBackToStoredKey()) { await boot(); return; }
     if (!fromFragment) localStorage.removeItem(KEY_STORAGE);
     $('gate-msg').textContent = fromFragment
-      ? `That link's key is not valid (${e.message}) — it may have been truncated. `
-        + 'Reopen the full bookmarked link.'
-      : `That key is not valid (${e.message}). Reopen the full bookmarked link.`;
+      ? `That link's key isn't valid (${e.message}). It may have been cut off: open the `
+        + 'full bookmarked link.'
+      : `That key isn't valid (${e.message}). Open the full bookmarked link.`;
     return;
   }
   await boot();
@@ -4244,7 +4221,7 @@ $('forget-btn').addEventListener('click', () => {
   if (timer) { clearInterval(timer); timer = null; }
   KEY = null; KEY_MATERIAL = null;   // stop the refresh loop decrypting anything more
   loadSeq++;                         // and drop whatever load is still in flight
-  fail('Key removed from this browser. Reopen the full bookmarked link to view the dashboard again.');
+  fail('Key removed. Open your bookmarked link to see the dashboard again.');
 });
 
 initTips();
