@@ -1144,7 +1144,11 @@ let heroWired = false;
 function wireHeroNav(days) {
   if (heroWired) return;
   heroWired = true;
-  const go = key => { HERO_DAY = key; renderHero(DATA.intraday || { rows: [] }, DATA.live || {}); };
+  const go = key => {
+    HERO_DAY = key;
+    const live = DATA.live || {};
+    renderHero(DATA.intraday || { rows: [] }, live, feedAgeMin(live) > STALE_AFTER_MINUTES);
+  };
   const stepBy = n => () => {
     const list = heroDays(DATA.intraday || { rows: [] });
     const i = list.indexOf(heroPick(list));
@@ -1184,7 +1188,7 @@ function heroPick(list) {
   return (HERO_DAY && list.includes(HERO_DAY)) ? HERO_DAY : list[list.length - 1];
 }
 
-function renderHero(intraday, live) {
+function renderHero(intraday, live, stale = false) {
   wireHeroNav();
   const svg = $('hero-chart');
   clear(svg);
@@ -1194,6 +1198,8 @@ function renderHero(intraday, live) {
   const list = heroDays(intraday);
   const todayStr = heroPick(list);
   const isNewest = todayStr === list[list.length - 1];
+  // the newest day with samples is not necessarily today - not if the feed stalled
+  const isToday = todayStr === dayKey(Date.now() / 1000);
   const rows = all.filter(r => dayKey(r[0]) === todayStr);
   if (!rows.length) { $('hero-date').textContent = 'no samples for that day'; return; }
   const dayStart = siteNoon(todayStr);
@@ -1206,7 +1212,7 @@ function renderHero(intraday, live) {
   gotoEl.min = list[0];
   gotoEl.max = list[list.length - 1];
   if (document.activeElement !== gotoEl) gotoEl.value = todayStr;
-  $('hero-eyebrow').textContent = isNewest ? 'Today' : 'Day';
+  $('hero-eyebrow').textContent = isToday ? 'Today' : 'Day';
 
   $('hero-date').textContent = dayStart.toLocaleDateString(undefined,
     { weekday: 'long', month: 'long', day: 'numeric' });
@@ -1254,7 +1260,7 @@ function renderHero(intraday, live) {
   };
   const a = scale(rows, [1, 2, 3]);
   // only today gets a forecast: a finished day has nothing left to predict
-  const fc = (isNewest && live.forecast && live.forecast.kwh) ? live.forecast : null;
+  const fc = (isToday && live.forecast && live.forecast.kwh) ? live.forecast : null;
   /* Plan the day's expected production before scaling, because the pane has to
      make room for it.
 
@@ -1456,8 +1462,10 @@ function renderHero(intraday, live) {
   // the sun, riding the current edge of the day
   const sx = X(last[0]), sy = Ya(last[1]);
   const halo = el('circle', { cx: sx, cy: sy, r: 7, fill: 'none', stroke: css('--sun'), 'stroke-width': 1.5 });
-  // the halo means "this is live" - a finished day gets a plain marker
-  if (isNewest && (live.status || 'ok') === 'ok') halo.setAttribute('class', 'sun-halo');
+  // the halo means "this is live" - a finished day or a stalled feed gets a
+  // plain marker. `stale` is judged against the clock in renderAll; live.status
+  // was frozen at publish time.
+  if (isToday && !stale) halo.setAttribute('class', 'sun-halo');
   else halo.setAttribute('opacity', 0);
   svg.appendChild(halo);
   svg.appendChild(el('circle', { cx: sx, cy: sy, r: 5, fill: css('--sun'),
@@ -4037,6 +4045,13 @@ async function load(initial = false) {
   }
 }
 
+/* Minutes since the newest sample, by the wall clock. */
+function feedAgeMin(live) {
+  return live.latest_epoch !== undefined
+    ? (Date.now() / 1000 - live.latest_epoch) / 60
+    : (live.age_minutes || 0);
+}
+
 function renderAll() {
   const live = DATA.live || {};
   if (TIP_RECHECK) TIP_RECHECK();
@@ -4049,9 +4064,7 @@ function renderAll() {
      payload. live.status was frozen at publish time, so if the Pi died the
      feed would keep serving a cheerful "ok" forever while the data aged - and
      the moving sun on the compass made it look livelier still. */
-  const ageMin = live.latest_epoch !== undefined
-    ? (Date.now() / 1000 - live.latest_epoch) / 60
-    : (live.age_minutes || 0);
+  const ageMin = feedAgeMin(live);
   const stale = ageMin > STALE_AFTER_MINUTES;
   const pill = $('status');
   pill.className = `pill ${stale ? 'stale' : 'ok'}`;
@@ -4063,7 +4076,7 @@ function renderAll() {
     + (stale ? '<div style="color:var(--text-muted);margin-top:3px">the Pi has stopped '
       + 'publishing, or collection has stalled</div>' : '');
 
-  renderHero(DATA.intraday || { rows: [] }, live);
+  renderHero(DATA.intraday || { rows: [] }, live, stale);
   renderMonthly(DATA.history || { months: [] });
   renderCumulative(DATA.history || { days: [] });
   renderRange(DATA.history || { days: [] }, live);
