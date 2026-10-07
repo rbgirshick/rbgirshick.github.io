@@ -906,6 +906,7 @@ const REPO = 'rbgirshick/pv-feed-a9074342';
 const BASE = `https://raw.githubusercontent.com/${REPO}/main`;
 const FILES = ['live', 'intraday', 'history', 'inverters'];
 const REFRESH_MS = 60000;
+const FETCH_TIMEOUT_MS = 20000;   // well inside REFRESH_MS, so a hung load cannot block the next
 const STALE_AFTER_MINUTES = 60;   // matches the publisher's own threshold
 const KEY_STORAGE = 'solar-dashboard-key';
 
@@ -955,18 +956,25 @@ function transient(message) {
 }
 
 async function fetchAndDecrypt(name) {
-  let res;
+  // A stalled connection would otherwise hang the load indefinitely; a timeout
+  // is a transport failure like any other, never a verdict on the key.
+  const ctl = new AbortController();
+  const timeout = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  let res, blob;
   try {
-    res = await fetch(`${BASE}/${name}.bin?t=${Date.now()}`, { cache: 'no-store' });
-  } catch (e) {
-    throw transient(`network error (${e.message})`);
-  }
-  if (!res.ok) throw transient(`${name}: HTTP ${res.status}`);
-  let blob;
-  try {
-    blob = new Uint8Array(await res.arrayBuffer());
-  } catch (e) {
-    throw transient(`truncated download (${e.message})`);
+    try {
+      res = await fetch(`${BASE}/${name}.bin?t=${Date.now()}`, { cache: 'no-store', signal: ctl.signal });
+    } catch (e) {
+      throw transient(ctl.signal.aborted ? `${name}: timed out` : `network error (${e.message})`);
+    }
+    if (!res.ok) throw transient(`${name}: HTTP ${res.status}`);
+    try {
+      blob = new Uint8Array(await res.arrayBuffer());
+    } catch (e) {
+      throw transient(ctl.signal.aborted ? `${name}: timed out` : `truncated download (${e.message})`);
+    }
+  } finally {
+    clearTimeout(timeout);
   }
   // Layout written by publish_dashboard.py: nonce(12) || ciphertext || tag(16).
   const iv = blob.slice(0, 12);
@@ -3993,12 +4001,22 @@ function renderRecords(history, live) {
   }
 }
 
-/* ---------- orchestration ---------------------------------------------- */
+/* ---------- orchestration ----------------------------------------------
+   One load at a time: a tick that arrives while the previous load is still
+   out is skipped rather than raced, and a result is dropped if anything has
+   superseded it (a forgotten key, say) while it was in flight.           */
+let loading = false;
+let loadSeq = 0;
+
 async function load(initial = false) {
+  if (loading) return false;
+  loading = true;
+  const seq = ++loadSeq;
   const app = $('app');
   if (!initial) app.style.opacity = '0.55';   // hold previous render, no skeleton flash
   try {
     const results = await Promise.all(FILES.map(fetchAndDecrypt));
+    if (seq !== loadSeq) return false;
     FILES.forEach((n, i) => DATA[n] = results[i]);
     renderAll();
     app.style.opacity = '1';
@@ -4008,9 +4026,12 @@ async function load(initial = false) {
     // A refresh failure is not worth interrupting a working page for - the
     // previous render stays. A failure on the very first load has nothing to
     // fall back on, so it shows the gate with a way back in.
+    if (seq !== loadSeq) return false;
     if (initial) fail(`Could not load the data (${err.message}).`, true);
     else console.warn('refresh failed', err);
     return false;
+  } finally {
+    loading = false;
   }
 }
 
@@ -4160,6 +4181,7 @@ $('forget-btn').addEventListener('click', () => {
   localStorage.removeItem(KEY_STORAGE);
   if (timer) { clearInterval(timer); timer = null; }
   KEY = null; KEY_MATERIAL = null;   // stop the refresh loop decrypting anything more
+  loadSeq++;                         // and drop whatever load is still in flight
   fail('Key removed from this browser. Reopen the full bookmarked link to view the dashboard again.');
 });
 
