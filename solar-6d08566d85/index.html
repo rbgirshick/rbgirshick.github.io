@@ -1489,7 +1489,7 @@ function renderHero(intraday, live) {
       + [['Production', PROD, vals[0]], ['Consumption', CONS, vals[1]], ['Net grid', NET, vals[2]]]
         .map(([n, c, v]) => `<div class="row"><span class="sw" style="background:${c}"></span>${n}`
           + `<span class="num">${fmt(v, dec)} ${unit}</span></div>`).join('');
-    tip.innerHTML = `<b>${when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</b>`
+    tip.innerHTML = `<b>${siteFmt({ hour: 'numeric', minute: '2-digit', hour12: true }).format(when)}</b>`
       + rowsHtml('now', 'kW', 2, [best[1], best[2], best[3]])
       + rowsHtml('so far today', 'kWh', 1, [bestCum[1], bestCum[2], bestCum[3]]);
     tip.style.opacity = 1;
