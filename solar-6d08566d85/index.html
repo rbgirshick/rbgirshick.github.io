@@ -505,7 +505,24 @@ button.ghost.nav:disabled:hover { background: transparent; color: var(--text-sec
   color: var(--text-muted); margin-top: 14px;
 }
 .array-foot .ramp { display: flex; border-radius: 3px; overflow: hidden; }
-.array-foot .ramp i { width: 20px; height: 9px; display: block; }
+.array-foot .ramp i { width: 14px; height: 9px; display: block; }
+
+/* Phones: the whole roof on one screen. It used to be drawn at desktop size in
+   a sideways scroller, which showed string 3 - flush right - as an empty band
+   with nothing to say there was more. At this size a module shows its kWh
+   alone; the serial, the watts and the rest are in its tooltip, and a module
+   lagging its string is outlined, standing in for the status dot. */
+@media (max-width: 680px) {
+  .roof { min-width: 0; }
+  .string-row { gap: 3px; margin-bottom: 8px; }
+  .panel {
+    flex-basis: calc((100% - 30px) / 11); aspect-ratio: 5 / 7;
+    padding: 2px; align-items: center; justify-content: center; border-radius: 3px;
+  }
+  .panel .sn, .panel .state, .panel .kwh .u { display: none; }
+  .panel .kwh { font-size: 11px; margin: 0; }
+  .panel.low { box-shadow: inset 0 0 0 2px var(--warning); }
+}
 
 /* --- records ------------------------------------------------------------ */
 .records {
@@ -3099,12 +3116,16 @@ function renderArray(live) {
     `${list.length} microinverters in three strings, drawn as they sit on the roof · `
     + `shaded by output right now · each panel judged against its own string`;
 
-  const ramp = ['--amber-100', '--amber-250', '--amber-400'].map(css);
+  /* A continuous tint, not three solid steps. With steps, every panel on a
+     sunny day landed in the top one and the roof became 25 identical blocks
+     of saturated amber - the heaviest thing on the page, saying nothing. The
+     peak stays a tint so the numbers on it remain the thing you read. */
+  const tint = f => `color-mix(in srgb, var(--prod) ${Math.round(8 + 52 * f)}%, var(--surface-1))`;
   const rampBox = $('array-ramp');
   clear(rampBox);
-  for (const c of ramp) {
+  for (const f of [0, 0.25, 0.5, 0.75, 1]) {
     const i = document.createElement('i');
-    i.style.background = c;
+    i.style.background = tint(f);
     rampBox.appendChild(i);
   }
 
@@ -3168,13 +3189,12 @@ function renderArray(live) {
     }
     const shade = inv.kw;
     if (shade !== null && shade !== undefined) {
-      const idx = Math.min(ramp.length - 1, Math.floor(shade / max * ramp.length));
-      cell.style.background = ramp[idx];
-      cell.style.color = '#0b0b0b';
+      cell.style.background = tint(Math.max(0, Math.min(1, shade / max)));
     }
     const v = inv.today_kwh;
     const rel = pctOfString(inv);
     const low = rel !== null ? rel < 85 : (inv.pct_of_avg !== undefined && inv.pct_of_avg < 80);
+    cell.classList.toggle('low', low);
     const working = (inv.state || '').toLowerCase() === 'working';
     // The big number is the day's energy; the status line always carries the
     // live watts so cumulative and instantaneous never get mistaken for each
