@@ -55,9 +55,7 @@
   --border:         rgba(11,11,11,0.10);
   --prod:           #eda100;  /* production: the sun's color */
   --cons:           #2a78d6;  /* consumption */
-  --net:            #1baf7a;  /* net grid (line contexts) */
-  --imp:            #2a78d6;  /* diverging: importing, cool */
-  --exp:            #eb6834;  /* diverging: exporting, warm */
+  --net:            #1baf7a;  /* net grid, in every context: sign, not hue, gives direction */
   --amber-100:      #f9e6bb;  /* sequential ramp for panel shading */
   --amber-250:      #f3c96f;
   --amber-400:      #eda100;
@@ -84,8 +82,6 @@
     --prod:           #c98500;
     --cons:           #3987e5;
     --net:            #199e70;
-    --imp:            #3987e5;
-    --exp:            #d95926;
     --good-text:      #0ca30c;
     --sun:            #eda100;
     --hero-tint:      color-mix(in srgb, #eda100 5%, #1a1a19);
@@ -104,8 +100,6 @@
   --prod:           #c98500;
   --cons:           #3987e5;
   --net:            #199e70;
-  --imp:            #3987e5;
-  --exp:            #d95926;
   --good-text:      #0ca30c;
   --sun:            #eda100;
   --hero-tint:      color-mix(in srgb, #eda100 5%, #1a1a19);
@@ -1568,8 +1562,7 @@ function renderDayReadouts(cum, dayStart) {
   box.appendChild(tile('Produced', PROD, cum[1], `over ${when}`));
   box.appendChild(tile('Used', CONS, cum[2], `over ${when}`));
   const exporting = cum[3] < 0;
-  box.appendChild(tile(exporting ? 'Exported' : 'Imported',
-    exporting ? css('--exp') : css('--imp'), cum[3], `over ${when}`));
+  box.appendChild(tile(exporting ? 'Exported' : 'Imported', css('--net'), cum[3], `over ${when}`));
 }
 
 /* ---------- readouts ----------------------------------------------------
@@ -1619,7 +1612,9 @@ function renderReadouts(live, peak, loadPeak, netPeak) {
 
   const net = c.net_kw ?? 0;
   const exporting = net < 0;
-  const dirColor = exporting ? css('--exp') : css('--imp');
+  // Net grid's own colour either way. Blue for importing read as the
+  // consumption series beside it; direction is the label and the meter side.
+  const dirColor = css('--net');
   box.appendChild(tile(exporting ? 'Exporting' : 'Importing', dirColor, Math.abs(net),
     t.net_kwh !== undefined
       ? `<b>${fmt(Math.abs(t.net_kwh))} kWh</b> ${t.net_kwh < 0 ? 'exported' : 'imported'} today`
@@ -2250,7 +2245,7 @@ function renderMonthly(history) {
   const shown = byYear[year] || {};
   const others = YEAR_COMPARE ? years.filter(y => y !== year) : [];
 
-  const PROD = css('--prod'), CONS = css('--cons'), IMP = css('--imp'), EXP = css('--exp');
+  const PROD = css('--prod'), CONS = css('--cons'), NET = css('--net');
   legendInto('monthly-legend', [['Production', PROD], ['Consumption', CONS]]);
   const hasApp = Object.values(shown).some(m => m.src === 'app');
   $('monthly-sub').textContent = (multi
@@ -2318,7 +2313,7 @@ function renderMonthly(history) {
       const nv = m.net_kwh;
       svg.appendChild(el('path', {
         d: barPath(cx - barW / 2, zero, barW, Math.max(1, Math.abs(Yb(nv) - zero)), nv >= 0 ? 1 : -1),
-        fill: nv >= 0 ? IMP : EXP }));
+        fill: NET }));
     }
     if (mo % labelEvery === 0) {
       text(svg, cx, B.bot + 17, MONTHS[mo], { 'text-anchor': 'middle' });
@@ -2393,7 +2388,7 @@ function renderMonthly(history) {
       if (m) {
         html += row('Production', PROD, m.pv_kwh)
           + row('Consumption', CONS, m.consumption_kwh)
-          + row('Net grid', m.net_kwh >= 0 ? IMP : EXP, m.net_kwh)
+          + row('Net grid', NET, m.net_kwh)
           + (m.src === 'app'
             ? '<div class="row">source<span class="num">mySunPower app</span></div>'
             : `<div class="row">metered days<span class="num">${m.days}</span></div>`);
@@ -2864,8 +2859,7 @@ function renderRange(history, live) {
   box.appendChild(tile('Produced', PROD, pv, perDay(pv)));
   box.appendChild(tile('Used', CONS, cons, perDay(cons)));
   const exporting = net < 0;
-  box.appendChild(tile(exporting ? 'Exported' : 'Imported',
-    exporting ? css('--exp') : css('--imp'), Math.abs(net),
+  box.appendChild(tile(exporting ? 'Exported' : 'Imported', css('--net'), Math.abs(net),
     !spanDays ? '—' : single ? (isToday ? 'so far today' : '')
       : `net of ${kfmt(Math.abs(net) / spanDays, 1)} kWh/day ${exporting ? 'out' : 'in'}`));
 
