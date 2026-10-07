@@ -4047,11 +4047,12 @@ async function load(initial = false) {
   }
 }
 
-/* Minutes since the newest sample, by the wall clock. */
+/* Minutes since the newest sample, by the wall clock. Infinity when there is
+   no sample at all - the publisher's {status: 'no-data'} payload has no
+   latest_epoch, and must not read as a feed that is zero minutes old. */
 function feedAgeMin(live) {
-  return live.latest_epoch !== undefined
-    ? (Date.now() / 1000 - live.latest_epoch) / 60
-    : (live.age_minutes || 0);
+  if (live.status === 'no-data' || live.latest_epoch == null) return Infinity;
+  return (Date.now() / 1000 - live.latest_epoch) / 60;
 }
 
 function renderAll() {
@@ -4068,12 +4069,16 @@ function renderAll() {
      the moving sun on the compass made it look livelier still. */
   const ageMin = feedAgeMin(live);
   const stale = ageMin > STALE_AFTER_MINUTES;
+  const noData = ageMin === Infinity;
   const pill = $('status');
   pill.className = `pill ${stale ? 'stale' : 'ok'}`;
-  $('status-text').textContent = stale
+  $('status-text').textContent = noData ? 'no data' : stale
     ? (ageMin >= 1440 ? `stale ${fmt(ageMin / 1440, 1)}d` : `stale ${fmt(ageMin / 60, 1)}h`)
     : 'live';
-  pill.dataset.tip = `<b>Feed</b><div class="row">last sample<span class="num">`
+  pill.dataset.tip = noData
+    ? '<b>Feed</b><div style="color:var(--text-muted);margin-top:3px">the Pi is publishing, '
+      + 'but has no samples to report</div>'
+    : `<b>Feed</b><div class="row">last sample<span class="num">`
     + `${ageMin < 90 ? `${Math.round(ageMin)} min` : `${fmt(ageMin / 60, 1)} h`} ago</span></div>`
     + (stale ? '<div style="color:var(--text-muted);margin-top:3px">the Pi has stopped '
       + 'publishing, or collection has stalled</div>' : '');
