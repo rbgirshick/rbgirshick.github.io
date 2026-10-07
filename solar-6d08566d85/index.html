@@ -1194,7 +1194,9 @@ function renderHero(intraday, live, stale = false) {
   wireHeroNav();
   const svg = $('hero-chart');
   clear(svg);
-  const all = intraday.rows || [];
+  // in time order whatever the payload says: around the DST fall-back hour the
+  // publisher has emitted epochs out of order
+  const all = (intraday.rows || []).slice().sort((p, q) => p[0] - q[0]);
   if (!all.length) { $('hero-date').textContent = 'no samples yet'; renderReadouts(live, 1, 1, 1); return; }
 
   const list = heroDays(intraday);
@@ -1226,8 +1228,8 @@ function renderHero(intraday, live, stale = false) {
   const cum = [];
   let ep = 0, ec = 0, en = 0;
   rows.forEach((r, i) => {
-    if (i) {
-      const dt = (r[0] - rows[i - 1][0]) / 3600;
+    const dt = i ? (r[0] - rows[i - 1][0]) / 3600 : 0;
+    if (dt > 0) {          // a repeated sample adds nothing, and must not subtract
       ep += (r[1] + rows[i - 1][1]) / 2 * dt;
       ec += (r[2] + rows[i - 1][2]) / 2 * dt;
       en += (r[3] + rows[i - 1][3]) / 2 * dt;
