@@ -2251,7 +2251,7 @@ function renderMonthly(history) {
   $('monthly-sub').textContent = (multi
     ? `${year}, by month.`
     : 'Totals by month.')
-    + (hasApp ? ' Months before Oct 2025 come from the mySunPower app, whose net grid runs'
+    + (hasApp ? ' Months through Oct 2025 come from the mySunPower app, whose net grid runs'
       + ' about 2% too favourable against the utility meter.' : '');
 
   const W = chartW(svg);
@@ -2455,10 +2455,10 @@ function renderCumulative(history) {
   for (const m of history.months || []) (monthsByYear[+m.month.slice(0, 4)] ||= []).push(m);
   const daysInMonth = (y, mon) => new Date(Date.UTC(y, mon + 1, 0)).getUTCDate();
   const monthWhole = m => m.src === 'app' || m.days >= 27;
-  /* One part-metered month per year is allowed and interpolated: 2025's
-     October is whole on neither instrument (collection began the 17th), so
-     its missing days fill at a rate blended from September and from
-     October's own metered days. */
+  /* One part-metered month per year is allowed and interpolated: its
+     missing days fill at a rate blended from the month before and from its
+     own metered days. (2025's October, where collection began on the 17th,
+     no longer needs this: the feed now gives it the app's whole-month figure.) */
   const monthCurveYear = y => {
     if (firstDoy(y) <= START_SLACK_DAYS) return null;
     const ms = (monthsByYear[y] || []).slice().sort((a, b) => a.month < b.month ? -1 : 1);
