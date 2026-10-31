@@ -1714,8 +1714,12 @@ function renderRangeBars(inRange, from, to) {
         agg.imputed = agg.imputed || !!r.imputed;
         agg.days += 1;
       }
-      push(d, 'wk', d.toLocaleDateString(undefined, { day: 'numeric' }));
-      buckets[buckets.length - 1].row = agg.days ? agg : null;
+      // Labelled by the date the week starts, not "wk N": weeks run from the
+      // range's first day, so a day-of-month after "wk" read as a week number.
+      push(d, d.toLocaleDateString(undefined, { month: 'short' }), String(d.getDate()));
+      Object.assign(buckets[buckets.length - 1], {
+        row: agg.days ? agg : null,
+        end: new Date(Math.min(n + 6, dayNum(to)) * 86400000 + 43200000) });
     }
   } else {
     const months = new Map();
@@ -1859,9 +1863,10 @@ function renderRangeBars(inRange, from, to) {
       const heading = w.month
         ? esc(w.d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))
           + (w.row ? ` · ${w.row.days} days` : '')
-        : w.row && w.row.days > 1
+        : w.end
         ? `${esc(w.d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}`
-          + ` · ${w.row.days} days`
+          + ` – ${esc(w.end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}`
+          + (w.row ? ` · ${w.row.days} days` : '')
         : esc(w.d.toLocaleDateString(undefined,
             { weekday: 'long', month: 'short', day: 'numeric' }));
       tip.innerHTML = `<b>${heading}</b>`
